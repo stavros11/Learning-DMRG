@@ -45,14 +45,14 @@ class Lanczos_Ops_Boundary(object):
         self.LR = LR
         
     def apply(self, x):
-        B = tf.reshape(x, shape=(self.D, self.D, self.d, self.d))
+        B = tf.reshape(x, shape=(self.D, self.d, self.d))
         LB = tf.einsum('abc,cij->abij', self.L, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
         LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
         return tf.reshape(LB, shape=(self.dims,))
         
     def apply_adjoint(self, x):
-        B = tf.reshape(x, shape=(self.D, self.D, self.d, self.d))
+        B = tf.reshape(x, shape=(self.D, self.d, self.d))
         B = tf.conj(tf.transpose(B, [1, 0, 3, 2]))
         LB = tf.einsum('abc,cij->abij', self.L, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
