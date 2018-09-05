@@ -63,14 +63,11 @@ class DMRG(object):
         U, S, self.state[0] = svd(self.state[0], full_matrices=False)
         
     def initialize_R(self):
-        ## Keep Rs in memory
-        self.R = []
-        
         ## Calculate first R (begining from right)
-        self.R.append(self.sess.run(self.ops.calc_R, feed_dict={self.ops.plc.state : self.state[-1]}))
+        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
         for i in range(self.ops.N - 3, -1 , -1):
-            self.R[i] = self.sess.run(self.ops.calc_RLs[i][0], feed_dict={self.ops.R : self.R[i+1],
-                  self.ops.state : self.states[i]})
+            self.R.append(self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R : self.R[i], 
+                                        self.ops.plc.state : self.states[self.ops.N - 3 + i]}))
     
         ## Apply Lanczos
         U, V, alpha, beta = self.sess.run(self.ops.lanczos_boundary0, feed_dict={self.ops.R : self.R[0]})
@@ -95,7 +92,8 @@ class Hamiltonian(object):
 class Operations(object):
     def __init__(self, D, H0, Hs, HN, lcz_k):
         self.N = len(Hs) + 2
-        self.DH, d = H0.shape[:2]
+        self.DH, self.d = H0.shape[:2]
+        self.D = D
         
         ## Create placeholders object
         self.plc = Placeholders()
@@ -104,17 +102,12 @@ class Operations(object):
         
         ## Determine if Hamiltonian is list or same for all middle sites
         self.H_list_flag = (len(Hs.shape) >= 5)
+        self.create_RL_ops()
+        self.create_lanczos_ops(lcz_k=lcz_k)
         
-        ## Create Lanczos ops
-        self.lanczos_boundary0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                operator=lcz.Lanczos_Ops_Boundary(D, d, self.H0, self.Hs[0], self.R), k=lcz_k, name="lanczos_bidiag_boundary0")
-        self.lanczos_boundaryN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                operator=lcz.Lanczos_Ops_Boundary(D, d, self.Hs[-1], self.HN, self.L), k=lcz_k, name="lanczos_bidiag_boundaryN")
-        self.lanczos = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                operator=lcz.Lanczos_Ops(D, d, self.Hs[i], self.Hs[i+1], self.L, self.R), k=lcz_k) for i in range(self.N-3)]
-        
-    def create_RL_ops(self, list_flag):
+    def create_RL_ops(self):
         self.R_boundary, self.L_boundary = self.RL_boundary_graph(self.H.right), self.RL_boundary_graph(self.H.left)
+        
         if self.H_list_flag:
             self.R, self.L = [], []
             for i in range(self.N - 2):
@@ -123,8 +116,31 @@ class Operations(object):
         else:
             self.R = self.R_graph(self.H.mid)
             self.L = self.L_graph(self.H.mid)
-
+            
+    def create_lanczos_ops(self, lcz_k):
+        if self.H_list_flag:
+            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid[0], self.R), 
+                    k=lcz_k, name="lanczos_bidiag_left")
+            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.mid[-1], self.H.right, self.L), 
+                    k=lcz_k, name="lanczos_bidiag_right")
+            
+            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid[i], self.H.mid[i+1], self.L), 
+                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
+        else:
+            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid, self.R), 
+                    k=lcz_k, name="lanczos_bidiag_left")
+            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.mid, self.H.right, self.L), 
+                    k=lcz_k, name="lanczos_bidiag_right")
+            
+            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+                    operator=lcz.Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid, self.H.mid[i+1], self.L), 
+                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
     
     ##############################
     ###### Is this needed ? ######
