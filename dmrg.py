@@ -7,7 +7,7 @@ Created on Mon Sep  3 11:48:26 2018
 
 import numpy as np
 import tensorflow as tf
-import lanczos as lcz
+from graphs import Operations
 from scipy.linalg import eigh_tridiagonal as eigtrd
 from numpy.linalg import svd
 
@@ -39,9 +39,9 @@ class DMRG(object):
         ## Create Ops object
         self.ops = Operations(D, H0, Hs, HN, lcz_k, self.plc)
         
-        ## Open session
-        #self.sess = tf.Session()
-        #self.sess.run(tf.global_variables_initializer())
+        ## Open tensorflow session
+        self.sess = tf.Session()
+        self.sess.run(tf.global_variables_initializer())
         
     def normalize_states(self):
         ## Start from right
@@ -65,108 +65,57 @@ class DMRG(object):
     def initialize_R(self):
         ## Calculate first R (begining from right)
         self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
-        for i in range(self.ops.N - 3, -1 , -1):
-            self.R.append(self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R : self.R[i], 
-                                        self.ops.plc.state : self.states[self.ops.N - 3 + i]}))
+        if self.ops.H_list_flag:
+            for i in range(self.ops.N - 2):
+                self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R : self.R[i], 
+                                            self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
+        else:
+            for i in range(self.ops.N - 2):
+                self.R.append(self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i], 
+                                            self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
     
+        self.R = self.R[::-1]
+    
+    ##### IMPORTANT! #######
+    ### Fix truncations for lanczos0 and lanczosN
+    ### Also check dimensions in lanczos ops in graphs.py module!
+    
+    def apply_lanczos0(self):
         ## Apply Lanczos
-        U, V, alpha, beta = self.sess.run(self.ops.lanczos_boundary0, feed_dict={self.ops.R : self.R[0]})
+        U, V, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R : self.R[0]})
         # U: probably useless, V: Lanczos right vectors stored as rows!
         # alpha: diagonal elements of the bidiagonal matrix, beta[:-1]: off-diagonal elements
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
-        ## Update B and do SVD
-        U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D*self.d))
         
-class Placeholders(object):
-    def __init__(self):
-        self.state = tf.placeholder(dtype=tf.complex64)
-        self.R = tf.placeholder(dtype=tf.complex64)
-        self.L = tf.placeholder(dtype=tf.complex64)
+        ## Update states by doing SVD on the updated B = V.dot(eigenvector)
+        self.energy = eig_vals[0]
+        self.state[0], S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D[0]*self.d), full_matrices=False)
+        self.state[1] = np.einsum('ab,bcd->acd', np.diag(S), V.reshape(self.d, self.D, self.d))
         
-class Hamiltonian(object):
-    def __init__(self, H0, Hs, HN):
-        self.left = tf.constant(H0, dtype=tf.complex64)
-        self.mid = tf.constant(Hs, dtype=tf.complex64)
-        self.right = tf.constant(HN, dtype=tf.complex64)
+    def apply_lanczosN(self):
+        U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L : self.L[-1]})
+        eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
+        
+        ## Updates
+        self.energy = eig_vals[0]
+        U, S, self.state[-1] = svd((V.dot(eig_vec[:, 0])).reshape(self.D[-1]*self.d, self.d), full_matrices=False)
+        self.state[1] = np.einsum('abc,cd->adb', U.reshape(self.D[-1], self.d, self.d), np.diag(S))
+        
+    def apply_lanczosM(self, i):
+        ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
+        ## For i=0 use lanczos0, for i=N-1 use lanczosN
+        U, V, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L : self.L[i-1],
+                                          self.ops.plc.R : self.R[i+1]})
+        eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
+        
+        ## Updates
+        self.energy = eig_vals[0]
+        U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
+        ## Assume Di < d D_{i-1} and truncate
+        U, S, V = U[:, :self.D[i]], S[:self.D[i]], V[:self.D[i]]
+        
+        ## Continue here!
+        
+        
     
-class Operations(object):
-    def __init__(self, D, H0, Hs, HN, lcz_k):
-        self.N = len(Hs) + 2
-        self.DH, self.d = H0.shape[:2]
-        self.D = D
-        
-        ## Create placeholders object
-        self.plc = Placeholders()
-        ## Create hamiltonian object
-        self.H = Hamiltonian(H0, Hs, HN)
-        
-        ## Determine if Hamiltonian is list or same for all middle sites
-        self.H_list_flag = (len(Hs.shape) >= 5)
-        self.create_RL_ops()
-        self.create_lanczos_ops(lcz_k=lcz_k)
-        
-    def create_RL_ops(self):
-        self.R_boundary, self.L_boundary = self.RL_boundary_graph(self.H.right), self.RL_boundary_graph(self.H.left)
-        
-        if self.H_list_flag:
-            self.R, self.L = [], []
-            for i in range(self.N - 2):
-                self.R.append(self.R_graph(self.H.mid[i]))
-                self.L.append(self.L_graph(self.H.mid[i]))
-        else:
-            self.R = self.R_graph(self.H.mid)
-            self.L = self.L_graph(self.H.mid)
-            
-    def create_lanczos_ops(self, lcz_k):
-        if self.H_list_flag:
-            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid[0], self.R), 
-                    k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.mid[-1], self.H.right, self.L), 
-                    k=lcz_k, name="lanczos_bidiag_right")
-            
-            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid[i], self.H.mid[i+1], self.L), 
-                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
-        
-        else:
-            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid, self.R), 
-                    k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.d, self.d, self.H.mid, self.H.right, self.L), 
-                    k=lcz_k, name="lanczos_bidiag_right")
-            
-            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=lcz.Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid, self.H.mid[i+1], self.L), 
-                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
-    
-    ##############################
-    ###### Is this needed ? ######
-    def initialize_MPS(self, state0, states, stateN):
-        # Create variables for optimization
-        ## (fix initializations here) ##       
-        self.B0 = tf.Variable(np.einsum('ai,abj->bij', self.state0, self.states[0]), dtype=tf.complex64)
-        self.BN = tf.Variable(np.einsum('bj,abi->aij', self.stateN, self.states[-1]), dtype=tf.complex64)
-        self.Bs = [tf.Variable(np.einsum('abi,bcj->acij', self.state[i], self.state[i+1]), 
-                               dtype=tf.complex64) for i in range(self.N-2)]
-    #############################
-        
-    def RL_boundary_graph(self, Hi):
-        x = tf.einsum('bij,cj->bci', Hi, self.plc.state)
-        return tf.einsum('bci,ai->abc', x, tf.conj(self.plc.state))
-    
-    def R_graph(self, Hi):
-        x = tf.einsum('abc,fcj->abfj', self.plc.R, self.plc.state)
-        x = tf.einsum('ebij,abfj->aefi', Hi, x)
-        return tf.einsum('adi,aefi->def', tf.conj(self.plc.state), x)
-        #also changed the indices in einsum to take into account the dagger
-    
-    def L_graph(self, Hi):
-        x = tf.einsum('def,fcj->decj', self.L, self.plc.state)
-        x = tf.einsum('ebij,decj->dbci', Hi, x)
-        return tf.einsum('adi,dbci->abc', tf.conj(self.plc.state), x)
-        #also changed the indices in einsum to take into account the dagger
-
     
