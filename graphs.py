@@ -37,27 +37,27 @@ class Operations(object):
             
     def create_lanczos_ops(self, lcz_k):
         if self.H_list_flag:
-            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid[0], self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid[-1], self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
-            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops(self.D[i], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
                                          self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
         else:
-            self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid, self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
-            self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops(self.D[i], self.D[i+1], self.H.mid, self.H.mid, 
                                          self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
