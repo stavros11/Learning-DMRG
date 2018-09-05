@@ -80,7 +80,6 @@ class DMRG(object):
         ## Update B and do SVD
         U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D*self.d))
         
-        
 class Placeholders(object):
     def __init__(self):
         self.state = tf.placeholder(dtype=tf.complex64)
@@ -106,12 +105,6 @@ class Operations(object):
         ## Determine if Hamiltonian is list or same for all middle sites
         self.H_list_flag = (len(Hs.shape) >= 5)
         
-        ## Create ops for R and L calculations/updates
-        self.R_boundary, self.L_boundary = self.RL_boundary_graph(self.H.right), self.RL_boundary_graph(self.H.left)
-        if self.H_list_flag:
-            self.calc_RLs = [[self.R_graph(self.H.mid[i]), self.L_graph(self.H.mid[i])] for i in range(self.N-2)]
-        ## Rs[i][0] for right, Rs[i][1] for left ##
-        
         ## Create Lanczos ops
         self.lanczos_boundary0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
                 operator=lcz.Lanczos_Ops_Boundary(D, d, self.H0, self.Hs[0], self.R), k=lcz_k, name="lanczos_bidiag_boundary0")
@@ -119,6 +112,18 @@ class Operations(object):
                 operator=lcz.Lanczos_Ops_Boundary(D, d, self.Hs[-1], self.HN, self.L), k=lcz_k, name="lanczos_bidiag_boundaryN")
         self.lanczos = [tf.contrib.solvers.lanczos.lanczos_bidiag(
                 operator=lcz.Lanczos_Ops(D, d, self.Hs[i], self.Hs[i+1], self.L, self.R), k=lcz_k) for i in range(self.N-3)]
+        
+    def create_RL_ops(self, list_flag):
+        self.R_boundary, self.L_boundary = self.RL_boundary_graph(self.H.right), self.RL_boundary_graph(self.H.left)
+        if self.H_list_flag:
+            self.R, self.L = [], []
+            for i in range(self.N - 2):
+                self.R.append(self.R_graph(self.H.mid[i]))
+                self.L.append(self.L_graph(self.H.mid[i]))
+        else:
+            self.R = self.R_graph(self.H.mid)
+            self.L = self.L_graph(self.H.mid)
+
         
     
     ##############################
@@ -132,20 +137,20 @@ class Operations(object):
                                dtype=tf.complex64) for i in range(self.N-2)]
     #############################
         
-    def RL_boundary_graph(self, hamiltonian):
-        R = tf.einsum('bij,cj->bci', hamiltonian, self.state_boundary)
-        return tf.einsum('bci,ai->abc', R, tf.conj(self.state_boundary))
+    def RL_boundary_graph(self, Hi):
+        x = tf.einsum('bij,cj->bci', Hi, self.plc.state)
+        return tf.einsum('bci,ai->abc', x, tf.conj(self.plc.state))
     
     def R_graph(self, Hi):
-        Rnew = tf.einsum('abc,fcj->abfj', self.R, self.state)
-        Rnew = tf.einsum('ebij,abfj->aefi', Hi, Rnew)
-        return tf.einsum('adi,aefi->def', tf.conj(self.state), Rnew)
+        x = tf.einsum('abc,fcj->abfj', self.plc.R, self.plc.state)
+        x = tf.einsum('ebij,abfj->aefi', Hi, x)
+        return tf.einsum('adi,aefi->def', tf.conj(self.plc.state), x)
         #also changed the indices in einsum to take into account the dagger
     
     def L_graph(self, Hi):
-        Lnew = tf.einsum('def,fcj->decj', self.L, self.state)
-        Lnew = tf.einsum('ebij,decj->dbci', Hi, Lnew)
-        return tf.einsum('adi,dbci->abc', tf.conj(self.state), Lnew)
+        x = tf.einsum('def,fcj->decj', self.L, self.plc.state)
+        x = tf.einsum('ebij,decj->dbci', Hi, x)
+        return tf.einsum('adi,dbci->abc', tf.conj(self.plc.state), x)
         #also changed the indices in einsum to take into account the dagger
 
     
