@@ -6,19 +6,7 @@ Created on Mon Sep  3 18:40:09 2018
 """
 
 import tensorflow as tf
-
-class Placeholders(object):
-    def __init__(self):
-        self.state = tf.placeholder(dtype=tf.complex64)
-        self.R = tf.placeholder(dtype=tf.complex64)
-        self.L = tf.placeholder(dtype=tf.complex64)
-        
-class Hamiltonian(object):
-    def __init__(self, H0, Hs, HN):
-        self.left = tf.constant(H0, dtype=tf.complex64)
-        self.mid = tf.constant(Hs, dtype=tf.complex64)
-        self.right = tf.constant(HN, dtype=tf.complex64)
-    
+   
 class Operations(object):
     def __init__(self, D, H0, Hs, HN, lcz_k):
         self.N = len(Hs) + 2
@@ -50,26 +38,28 @@ class Operations(object):
     def create_lanczos_ops(self, lcz_k):
         if self.H_list_flag:
             self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid[0], self.R), 
+                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid[0], self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid[-1], self.H.right, self.L), 
+                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid[-1], self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid[i], self.H.mid[i+1], self.L), 
+                    operator=Lanczos_Ops(self.D[i], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
+                                         self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
         else:
             self.lanczos_L = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid, self.R), 
+                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.left, self.H.mid, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczos_R = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid, self.H.right, self.L), 
+                    operator=Lanczos_Ops_Boundary(self.d, self.d, self.H.mid, self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczos_M = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.D[i], self.D[i+1], self.H.mid, self.H.mid[i+1], self.L), 
+                    operator=Lanczos_Ops(self.D[i], self.D[i+1], self.H.mid, self.H.mid, 
+                                         self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi):
@@ -87,6 +77,18 @@ class Operations(object):
         x = tf.einsum('ebij,decj->dbci', Hi, x)
         return tf.einsum('adi,dbci->abc', tf.conj(self.plc.state), x)
         #also changed the indices in einsum to take into account the dagger
+
+class Placeholders(object):
+    def __init__(self):
+        self.state = tf.placeholder(dtype=tf.complex64)
+        self.R = tf.placeholder(dtype=tf.complex64)
+        self.L = tf.placeholder(dtype=tf.complex64)
+        
+class Hamiltonian(object):
+    def __init__(self, H0, Hs, HN):
+        self.left = tf.constant(H0, dtype=tf.complex64)
+        self.mid = tf.constant(Hs, dtype=tf.complex64)
+        self.right = tf.constant(HN, dtype=tf.complex64)
 
 class Lanczos_Ops(object):
     def __init__(self, D, d, H1, H2, L, R):
