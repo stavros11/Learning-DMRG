@@ -62,7 +62,7 @@ class DMRG(object):
         self.state[0] = np.einsum('bi,bc->ci', self.state[0], U.dot(np.diag(S)))
         U, S, self.state[0] = svd(self.state[0], full_matrices=False)
         
-    def initialize_R(self):
+    def initialize_RL(self):
         ## Calculate first R (begining from right)
         self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
         if self.ops.H_list_flag:
@@ -75,9 +75,9 @@ class DMRG(object):
                                             self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
     
         self.R = self.R[::-1]
+        self.L = (self.ops.N - 1) * [None]
     
     ##### IMPORTANT! #######
-    ### Fix truncations for lanczos0 and lanczosN
     ### Also check dimensions in lanczos ops in graphs.py module!
     
     def apply_lanczos0(self):
@@ -89,8 +89,8 @@ class DMRG(object):
         
         ## Update states by doing SVD on the updated B = V.dot(eigenvector)
         self.energy = eig_vals[0]
-        self.state[0], S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D[0]*self.d), full_matrices=False)
-        self.state[1] = np.einsum('ab,bcd->acd', np.diag(S), V.reshape(self.d, self.D, self.d))
+        self.state[0], S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D[1]*self.d), full_matrices=False)
+        self.state[1] = np.einsum('ab,bcd->acd', np.diag(S), V.reshape(self.d, self.D[1], self.d))
         
     def apply_lanczosN(self):
         U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L : self.L[-1]})
@@ -98,8 +98,8 @@ class DMRG(object):
         
         ## Updates
         self.energy = eig_vals[0]
-        U, S, self.state[-1] = svd((V.dot(eig_vec[:, 0])).reshape(self.D[-1]*self.d, self.d), full_matrices=False)
-        self.state[1] = np.einsum('abc,cd->adb', U.reshape(self.D[-1], self.d, self.d), np.diag(S))
+        U, S, self.state[-1] = svd((V.dot(eig_vec[:, 0])).reshape(self.D[-2]*self.d, self.d), full_matrices=False)
+        self.state[1] = np.einsum('abc,cd->adb', U.reshape(self.D[-2], self.d, self.d), np.diag(S))
         
     def apply_lanczosM(self, i):
         ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
@@ -108,13 +108,16 @@ class DMRG(object):
                                           self.ops.plc.R : self.R[i+1]})
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
         
-        ## Updates
-        self.energy = eig_vals[0]
         U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
         ## Assume Di < d D_{i-1} and truncate
         U, S, V = U[:, :self.D[i]], S[:self.D[i]], V[:self.D[i]]
         
-        ## Continue here!
+        ## Updates
+        self.energy = eig_vals[0]
+        self.state[i] = U.reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
+        self.state[i+1] = (np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
+        
+    
         
         
     
