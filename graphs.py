@@ -73,7 +73,7 @@ class Operations(object):
         #also changed the indices in einsum to take into account the dagger
     
     def L_graph(self, Hi):
-        x = tf.einsum('def,fcj->decj', self.L, self.plc.state)
+        x = tf.einsum('def,fcj->decj', self.plc.L, self.plc.state)
         x = tf.einsum('ebij,decj->dbci', Hi, x)
         return tf.einsum('adi,dbci->abc', tf.conj(self.plc.state), x)
         #also changed the indices in einsum to take into account the dagger
