@@ -18,12 +18,14 @@ class Operations(object):
         self.N = len(Hs) + 2
                 
         ## Create placeholders object
-        self.plc = Placeholders()
+        self.plc = Placeholders(d=H0.shape[-1], D=D)
         ## Create hamiltonian object
         self.H = Hamiltonian(H0, Hs, HN)
         
         ## Determine if Hamiltonian is list or same for all middle sites
-        self.H_list_flag = (len(Hs.shape) >= 5)
+        #self.H_list_flag = (len(Hs.shape) >= 5)
+        self.H_list_flag = True #make true because of the plc.state problems 
+        #(have to define dimension --> different placeholder for each state)
         self.create_RL_ops()
         self.create_lanczos_ops(lcz_k=lcz_k)
         
@@ -33,8 +35,8 @@ class Operations(object):
         if self.H_list_flag:
             self.R, self.L = [], []
             for i in range(self.N - 2):
-                self.R.append(self.R_graph(self.H.mid[i]))
-                self.L.append(self.L_graph(self.H.mid[i]))
+                self.R.append(self.R_graph(self.H.mid[i], s=self.plc.state[i+1]))
+                self.L.append(self.L_graph(self.H.mid[i], s=self.plc.state[i+1]))
         else:
             self.R = self.R_graph(self.H.mid)
             self.L = self.L_graph(self.H.mid)
@@ -67,31 +69,32 @@ class Operations(object):
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi):
-        x = tf.einsum('bij,cj->bci', Hi, self.plc.state)
-        return tf.einsum('bci,ai->abc', x, tf.conj(self.plc.state))
+        x = tf.einsum('bij,cj->bci', Hi, self.plc.state[0])
+        return tf.einsum('bci,ai->abc', x, tf.conj(self.plc.state[0]))
     
-    def R_graph(self, Hi):
-        x = tf.einsum('abc,fcj->abfj', self.plc.R, self.plc.state)
+    def R_graph(self, Hi, s):
+        x = tf.einsum('abc,fcj->abfj', self.plc.R, s)
         x = tf.einsum('ebij,abfj->aefi', Hi, x)
-        return tf.einsum('dai,aefi->def', tf.conj(self.plc.state), x)
+        return tf.einsum('dai,aefi->def', tf.conj(s), x)
     
-    def L_graph(self, Hi):
-        x = tf.einsum('def,fcj->decj', self.plc.L, self.plc.state)
+    def L_graph(self, Hi, s):
+        x = tf.einsum('def,fcj->decj', self.plc.L, s)
         x = tf.einsum('ebij,decj->dbci', Hi, x)
-        return tf.einsum('dai,dbci->abc', tf.conj(self.plc.state), x)
+        return tf.einsum('dai,dbci->abc', tf.conj(s), x)
         #also changed the indices in einsum to take into account the dagger
 
 class Placeholders(object):
-    def __init__(self):
-        self.state = tf.placeholder(dtype=tf.complex64)
+    def __init__(self, d, D):
+        self.state = [tf.placeholder(dtype=tf.complex64, shape=(d, d))]
+        self.state+= [tf.placeholder(dtype=tf.complex64, shape=(D1, D2, d)) for (D1, D2) in zip(D[:-1], D[1:])]
         self.R = tf.placeholder(dtype=tf.complex64)
         self.L = tf.placeholder(dtype=tf.complex64)
         
 class Hamiltonian(object):
     def __init__(self, H0, Hs, HN):
-        self.left = tf.constant(H0, dtype=tf.complex64)
-        self.mid = tf.constant(Hs, dtype=tf.complex64)
-        self.right = tf.constant(HN, dtype=tf.complex64)
+        self.left = tf.constant(H0, dtype=tf.complex64, shape=H0.shape)
+        self.mid = tf.constant(Hs, dtype=tf.complex64, shape=Hs.shape)
+        self.right = tf.constant(HN, dtype=tf.complex64, shape=HN.shape)
 
 class Lanczos_OperatorM(object):
     def __init__(self, DL, DR, H1, H2, L, R):
