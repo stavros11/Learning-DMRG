@@ -42,28 +42,28 @@ class Operations(object):
     def create_lanczos_ops(self, lcz_k):
         if self.H_list_flag:
             self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.H.left, self.H.mid[0], self.plc.R), 
+                    operator=Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
                     operator=Lanczos_Ops_Boundary(self.H.mid[-1], self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
-                                         self.plc.L, self.plc.R), 
+                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
+                                               self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
         else:
             self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.H.left, self.H.mid, self.plc.R), 
+                    operator=Lanczos_Operator0(self.H.left, self.H.mid, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.d, self.H.mid, self.H.right, self.plc.L), 
+                    operator=Lanczos_Ops_Boundary(self.H.mid, self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops(self.D[i-1], self.D[i+1], self.H.mid, self.H.mid, 
-                                         self.plc.L, self.plc.R), 
+                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid, self.H.mid, 
+                                               self.plc.L, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi):
@@ -93,7 +93,7 @@ class Hamiltonian(object):
         self.mid = tf.constant(Hs, dtype=tf.complex64)
         self.right = tf.constant(HN, dtype=tf.complex64)
 
-class Lanczos_Ops(object):
+class Lanczos_OperatorM(object):
     def __init__(self, DL, DR, H1, H2, L, R):
         self.DL, self.DR = DL, DR
         self.d = H1.shape[-1]
@@ -123,7 +123,7 @@ class Lanczos_Ops(object):
         LB = tf.einsum('afgij,efg->aeij', LB, self.R)
         return tf.conj(tf.reshape(tf.transpose(LB, [1, 0, 3, 2]), shape=(self.dims,)))
     
-class Lanczos_Ops_Boundary(object):
+class Lanczos_Operator0(object):
     def __init__(self, H1, H2, LR):
         self.d = H1.shape[-1]
         self.dims = self.d**3
@@ -136,8 +136,9 @@ class Lanczos_Ops_Boundary(object):
     def apply(self, x):
         B = tf.reshape(x, shape=(self.d, self.d, self.d))
         LB = tf.einsum('abc,cij->abij', self.LR, B)
-        LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
-        LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
+        LB = tf.einsum('abij,dbkj->adik', LB, self.H2)
+        LB = tf.einsum('adik,dli->lka', LB, self.H1)
+        ## Final indices in the order of the TN-graph
         return tf.reshape(LB, shape=(self.dims,))
     
     ### CHECK APPLY ADJOINT! ###
@@ -148,4 +149,16 @@ class Lanczos_Ops_Boundary(object):
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
         LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
         return tf.conj(tf.reshape(tf.transpose(LB, [1, 0, 3, 2]), shape=(self.dims,)))
+    
+class Lanczos_OperatorN(Lanczos_Operator0):
+    def apply(self, x):
+        B = tf.reshape(x, shape=(self.d, self.d, self.d))
+        LB = tf.einsum('abc,cij->abij', self.LR, B)
+        LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
+        LB = tf.einsum('adkj,dlj->akl', LB, self.H1)
+        ## Final indices in the order of the TN-graph
+        return tf.reshape(LB, shape=(self.dims,))
+    
+    ### ADD ADJOINT! ###
+        
     
