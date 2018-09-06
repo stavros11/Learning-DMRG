@@ -25,7 +25,7 @@ class DMRG(object):
         print('\nStates succesfully initialized in right canonical form!')
         
         ## Create Ops object
-        self.ops = Operations(D, H0, Hs, HN, lcz_k, self.plc)
+        self.ops = Operations(D, H0, Hs, HN, lcz_k)
                
         ## Open tensorflow session
         self.sess = tf.Session()
