@@ -24,15 +24,9 @@ class DMRG(object):
         ## H0: Hamiltonian for first site: Complex (DH, d, d)
         ## Hs: Hamiltonian for middle chain: Complex (N-2, DH, DH, d, d)
         ## HN: Hamiltonian for last site: Complex (DH, d, d)
-        
-        ## Initialize MPS: List of complex (D, D, d) tensors
-        self.state = [np.random.random(size=(D1, D2, d)) + 1j * np.random.random(
-                size=(D1, D2, d)) for (D1, D2) in zip(D[:-1], D[1:])]
-        ## First and last states are (d, d) (for boundary D=d in normal form)
-        self.state = ([np.random.random(size=(d, d)) + 1j * np.random.random(size=(d, d))] +
-                       self.state + [np.random.random(size=(d, d)) + 1j * np.random.random(size=(d, d))])
-        
-        ## Normalize states to canonical form
+
+        ## Initialize and normalize states to canonical form
+        self.initialize_states()
         self.normalize_states()
         print('\nStates succesfully normalized!')
         
@@ -42,6 +36,14 @@ class DMRG(object):
         ## Open tensorflow session
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
+    
+    def initialize_states(self):
+        ## Initialize MPS: List of complex (D, D, d) tensors
+        self.state = [np.random.random(size=(D1, D2, self.d)) + 1j * np.random.random(
+                size=(D1, D2, self.d)) for (D1, D2) in zip(self.D[:-1], self.D[1:])]
+        ## First and last states are (d, d) (for boundary D=d in normal form)
+        self.state = ([np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))] +
+                       self.state + [np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))])
         
     def normalize_states(self):
         ## Start from right
@@ -62,15 +64,11 @@ class DMRG(object):
         self.state[0] = np.einsum('bi,bc->ci', self.state[0], U.dot(np.diag(S)))
         U, S, self.state[0] = svd(self.state[0], full_matrices=False)
         
-    def initialize_RL(self):
-        ## Calculate first R (begining from right)
-        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
-        for i in range(self.ops.N - 2):
-            self.R.append(self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i], 
-                                        self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
-    
-        self.R = self.R[::-1]
-        self.L = (self.ops.N - 1) * [None]
+    def initialize_RL(self):       
+        self.R, self.L = (self.ops.N - 1) * [None], (self.ops.N - 1) * [None]
+        self.update_R_boundary()
+        for i in range(self.ops.N - 3, -1, -1):
+            self.update_R(i)
     
     ##### IMPORTANT! #######
     ### Also check dimensions in lanczos ops in graphs.py module!
@@ -114,15 +112,15 @@ class DMRG(object):
         
     def update_L(self, i):
         ## Here i is the index of L to be updated: 1 <= i <= N-1
-        ## For i=0 ...
+        ## For i=0 use boundary function
         self.L[i] = self.sess.run(self.ops.L, feed_dict={self.ops.plc.L : self.L[i-1], 
               self.ops.plc.state : self.state[i]})
     
     def update_R(self, i):
         ## Here i is the index of L to be updated: 0 <= i <= N-3
-        ## For i=N-2 ...
+        ## For i=N-2 use boundary function
         self.R[i] = self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i+1],
-              self.ops.plc.state : self.state[i]})
+              self.ops.plc.state : self.state[i+1]})
     
     def update_R_boundary(self):
         self.R[-1] = self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})
@@ -144,12 +142,12 @@ class DMRG_Hlist(DMRG):
         
     def update_L(self, i):
         ## Here i is the index of L to be updated: 1 <= i <= N-2
-        ## For i=0 ...
+        ## For i=0 use boundary function
         self.L[i] = self.sess.run(self.ops.L[i-1], feed_dict={self.ops.plc.L : self.L[i-1], 
               self.ops.plc.state : self.state[i]})
     
     def update_R(self, i):
         ## Here i is the index of L to be updated: 0 <= i <= N-3
-        ## For i=N-2 ...
+        ## For i=N-2 use boundary function
         self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R : self.R[i+1],
               self.ops.plc.state : self.state[i]})
