@@ -28,14 +28,22 @@ class DMRG(object):
         ## Initialize and normalize states to canonical form
         self.initialize_states()
         self.normalize_states()
-        print('\nStates succesfully normalized!')
+        print('\nStates succesfully initialized in right canonical form!')
         
         ## Create Ops object
         self.ops = Operations(D, H0, Hs, HN, lcz_k, self.plc)
-        
+               
         ## Open tensorflow session
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
+        
+        ## Initialize R, L matrices and calculate R
+        self.initialize_RL()
+        print('R succesfully initialized!')
+    
+    #############################################
+    #### Functions that run basic operations ####
+    #############################################
     
     def initialize_states(self):
         ## Initialize MPS: List of complex (D, D, d) tensors
@@ -69,9 +77,36 @@ class DMRG(object):
         self.update_R_boundary()
         for i in range(self.ops.N - 3, -1, -1):
             self.update_R(i)
+            
+    def sweep(self):
+        ## Update left boundary
+        energy_list = [self.apply_lanczos0()]
+        self.update_L_boundary()
+        
+        ## Sweep to right
+        for i in range(1, self.ops.N - 1):
+            energy_list.append(self.apply_lanczosM(i))
+            self.update_R(i-1)
+            self.update_L(i)
+        
+        ## Update right boundary
+        energy_list.append(self.apply_lanczosN())
+        self.update_R_boundary()
+        
+        ## Sweep to left
+        for i in range(self.ops.N - 2, 0, -1):
+            energy_list.append(self.apply_lanczosM(i))
+            self.update_R(i-1)
+            self.update_L(i)
+        
+        return energy_list
     
     ##### IMPORTANT! #######
     ### Also check dimensions in lanczos ops in graphs.py module!
+    
+    #################################
+    ##### Functions that assist #####
+    #################################
     
     def apply_lanczos0(self):
         ## Apply Lanczos
@@ -85,6 +120,8 @@ class DMRG(object):
         self.state[0], S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D[1]*self.d), full_matrices=False)
         self.state[1] = np.einsum('ab,bcd->acd', np.diag(S), V.reshape(self.d, self.D[1], self.d))
         
+        return self.energy
+        
     def apply_lanczosN(self):
         U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L : self.L[-1]})
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
@@ -92,7 +129,9 @@ class DMRG(object):
         ## Updates
         self.energy = eig_vals[0]
         U, S, self.state[-1] = svd((V.dot(eig_vec[:, 0])).reshape(self.D[-2]*self.d, self.d), full_matrices=False)
-        self.state[1] = np.einsum('abc,cd->adb', U.reshape(self.D[-2], self.d, self.d), np.diag(S))
+        self.state[-2] = np.einsum('abc,cd->adb', U.reshape(self.D[-2], self.d, self.d), np.diag(S))
+        
+        return self.energy
         
     def apply_lanczosM(self, i):
         ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
@@ -109,6 +148,8 @@ class DMRG(object):
         self.energy = eig_vals[0]
         self.state[i] = U.reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
         self.state[i+1] = (np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
+        
+        return self.energy
         
     def update_L(self, i):
         ## Here i is the index of L to be updated: 1 <= i <= N-1
@@ -128,7 +169,10 @@ class DMRG(object):
     def update_L_boundary(self):
         self.L[0] = self.sess.run(self.ops.L_boundary, feed_dict={self.ops.plc.state : self.state[0]})
         
-        
+
+################################################
+#### For the case where Hs is given as list ####
+################################################
 class DMRG_Hlist(DMRG):
     def initialize_RL(self):
         ## Calculate first R (begining from right)
