@@ -19,12 +19,6 @@ class DMRG(object):
         ## lcz_k: k-number for Lanczos
         self.d, self.D = d, D
         
-        ### Hamiltonian in MPO form ###
-        ## DH: Hidden dimension for Hamiltonian
-        ## H0: Hamiltonian for first site: Complex (DH, d, d)
-        ## Hs: Hamiltonian for middle chain: Complex (N-2, DH, DH, d, d)
-        ## HN: Hamiltonian for last site: Complex (DH, d, d)
-
         ## Initialize and normalize states to canonical form
         self.initialize_states()
         self.normalize_states()
