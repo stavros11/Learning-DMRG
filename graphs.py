@@ -45,7 +45,7 @@ class Operations(object):
                     operator=Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.H.mid[-1], self.H.right, self.plc.L), 
+                    operator=Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
@@ -58,7 +58,7 @@ class Operations(object):
                     operator=Lanczos_Operator0(self.H.left, self.H.mid, self.plc.R), 
                     k=lcz_k, name="lanczos_bidiag_left")
             self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Ops_Boundary(self.H.mid, self.H.right, self.plc.L), 
+                    operator=Lanczos_OperatorN(self.H.mid, self.H.right, self.plc.L), 
                     k=lcz_k, name="lanczos_bidiag_right")
             
             self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
@@ -113,15 +113,15 @@ class Lanczos_OperatorM(object):
         ## Final indices in order DL, d, d, DR
         return tf.reshape(LB, shape=(self.dims,))
     
-    ### CHECK APPLY ADJOINT! ###
+    ## Fixed indices to apply adjoint a-c, i-k, j-l, e-g
     def apply_adjoint(self, x):
-        B = tf.reshape(x, shape=(self.D, self.D, self.d, self.d))
-        B = tf.conj(tf.transpose(B, [1, 0, 3, 2]))
-        LB = tf.einsum('abc,cgkl->abgkl', self.L, B)
-        LB = tf.einsum('abgkl,bdik->adgil', LB, self.H1)
-        LB = tf.einsum('adgil,dfjl->afgij', LB, self.H2)
-        LB = tf.einsum('afgij,efg->aeij', LB, self.R)
-        return tf.conj(tf.reshape(tf.transpose(LB, [1, 0, 3, 2]), shape=(self.dims,)))
+        B = tf.reshape(x, shape=(self.DL, self.DR, self.d, self.d))
+        LB = tf.einsum('cba,cgkl->abgkl', tf.conj(self.L), B)
+        LB = tf.einsum('abgkl,bdki->adgil', LB, tf.conj(self.H1))
+        LB = tf.einsum('adgil,dflj->afgij', LB, tf.conj(self.H2))
+        LB = tf.einsum('afgij,gfe->aeij', LB, tf.conj(self.R))
+        ## Final indices in order DL, d, d, DR
+        return tf.reshape(LB, shape=(self.dims,))
     
 class Lanczos_Operator0(object):
     def __init__(self, H1, H2, LR):
@@ -141,24 +141,29 @@ class Lanczos_Operator0(object):
         ## Final indices in the order of the TN-graph
         return tf.reshape(LB, shape=(self.dims,))
     
-    ### CHECK APPLY ADJOINT! ###
     def apply_adjoint(self, x):
         B = tf.reshape(x, shape=(self.d, self.d, self.d))
-        B = tf.conj(tf.transpose(B, [1, 0, 3, 2]))
-        LB = tf.einsum('abc,cij->abij', self.LR, B)
-        LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
-        LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
-        return tf.conj(tf.reshape(tf.transpose(LB, [1, 0, 3, 2]), shape=(self.dims,)))
+        LB = tf.einsum('cba,cij->abij', tf.conj(self.LR), B)
+        LB = tf.einsum('abij,bdik->adkj', LB, tf.conj(self.H2))
+        LB = tf.einsum('adkj,djl->akl', LB, tf.conj(self.H1))
+        ## Final indices in the order of the TN-graph
+        return tf.reshape(LB, shape=(self.dims,))
     
 class Lanczos_OperatorN(Lanczos_Operator0):
     def apply(self, x):
         B = tf.reshape(x, shape=(self.d, self.d, self.d))
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
-        LB = tf.einsum('adkj,dlj->akl', LB, self.H1)
+        LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
         ## Final indices in the order of the TN-graph
         return tf.reshape(LB, shape=(self.dims,))
     
-    ### ADD ADJOINT! ###
+    def apply_adjoint(self, x):
+        B = tf.reshape(x, shape=(self.d, self.d, self.d))
+        LB = tf.einsum('cba,cij->abij', tf.conj(self.LR), B)
+        LB = tf.einsum('abij,bdik->adkj', LB, tf.conj(self.H1))
+        LB = tf.einsum('adkj,djl->akl', LB, tf.conj(self.H2))
+        ## Final indices in the order of the TN-graph
+        return tf.reshape(LB, shape=(self.dims,))
         
     
