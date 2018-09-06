@@ -65,14 +65,9 @@ class DMRG(object):
     def initialize_RL(self):
         ## Calculate first R (begining from right)
         self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
-        if self.ops.H_list_flag:
-            for i in range(self.ops.N - 2):
-                self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R : self.R[i], 
-                                            self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
-        else:
-            for i in range(self.ops.N - 2):
-                self.R.append(self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i], 
-                                            self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
+        for i in range(self.ops.N - 2):
+            self.R.append(self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i], 
+                                        self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
     
         self.R = self.R[::-1]
         self.L = (self.ops.N - 1) * [None]
@@ -117,8 +112,44 @@ class DMRG(object):
         self.state[i] = U.reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
         self.state[i+1] = (np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
         
+    def update_L(self, i):
+        ## Here i is the index of L to be updated: 1 <= i <= N-1
+        ## For i=0 ...
+        self.L[i] = self.sess.run(self.ops.L, feed_dict={self.ops.plc.L : self.L[i-1], 
+              self.ops.plc.state : self.state[i]})
     
+    def update_R(self, i):
+        ## Here i is the index of L to be updated: 0 <= i <= N-3
+        ## For i=N-2 ...
+        self.R[i] = self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i+1],
+              self.ops.plc.state : self.state[i]})
+    
+    def update_R_boundary(self):
+        self.R[-1] = self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})
+        
+    def update_L_boundary(self):
+        self.L[0] = self.sess.run(self.ops.L_boundary, feed_dict={self.ops.plc.state : self.state[0]})
         
         
+class DMRG_Hlist(DMRG):
+    def initialize_RL(self):
+        ## Calculate first R (begining from right)
+        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
+        for i in range(self.ops.N - 2):
+            self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R : self.R[i], 
+                                        self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
     
+        self.R = self.R[::-1]
+        self.L = (self.ops.N - 1) * [None]
+        
+    def update_L(self, i):
+        ## Here i is the index of L to be updated: 1 <= i <= N-2
+        ## For i=0 ...
+        self.L[i] = self.sess.run(self.ops.L[i-1], feed_dict={self.ops.plc.L : self.L[i-1], 
+              self.ops.plc.state : self.state[i]})
     
+    def update_R(self, i):
+        ## Here i is the index of L to be updated: 0 <= i <= N-3
+        ## For i=N-2 ...
+        self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R : self.R[i+1],
+              self.ops.plc.state : self.state[i]})
