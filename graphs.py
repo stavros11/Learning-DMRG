@@ -18,77 +18,78 @@ class Operations(object):
         self.N = len(Hs) + 2
                 
         ## Create placeholders object
-        self.plc = Placeholders(d=H0.shape[-1], D=D)
+        self.plc = Placeholders(d=H0.shape[-1], D=D, DH=H0.shape[0])
         ## Create hamiltonian object
         self.H = Hamiltonian(H0, Hs, HN)
         
         ## Determine if Hamiltonian is list or same for all middle sites
         #self.H_list_flag = (len(Hs.shape) >= 5)
-        self.H_list_flag = True #make true because of the plc.state problems 
+        #Make H_list_flag always true because of the plc.state problems 
         #(have to define dimension --> different placeholder for each state)
         self.create_RL_ops()
         self.create_lanczos_ops(lcz_k=lcz_k)
         
     def create_RL_ops(self):
-        self.R_boundary, self.L_boundary = self.RL_boundary_graph(self.H.right), self.RL_boundary_graph(self.H.left)
+        self.R_boundary = self.RL_boundary_graph(self.H.right, self.plc.state[0])
+        self.L_boundary = self.RL_boundary_graph(self.H.left, self.plc.state[0])
         
-        if self.H_list_flag:
-            self.R, self.L = [], []
-            for i in range(self.N - 2):
-                self.R.append(self.R_graph(self.H.mid[i], s=self.plc.state[i+1]))
-                self.L.append(self.L_graph(self.H.mid[i], s=self.plc.state[i+1]))
-        else:
-            self.R = self.R_graph(self.H.mid)
-            self.L = self.L_graph(self.H.mid)
+        self.R, self.L = [], []
+        for i in range(self.N - 4):
+            self.R.append(self.R_graph(i))
+            self.L.append(self.L_graph(i))
+#        else:
+#            self.R = self.R_graph(self.H.mid)
+#            self.L = self.L_graph(self.H.mid)
             
     def create_lanczos_ops(self, lcz_k):
-        if self.H_list_flag:
-            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R), 
-                    k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L), 
-                    k=lcz_k, name="lanczos_bidiag_right")
+        self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                operator=Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R[0]), 
+                k=lcz_k, name="lanczos_bidiag_left")
+        self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
+                operator=Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L[-1]), 
+                k=lcz_k, name="lanczos_bidiag_right")
             
-            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
-                                               self.plc.L, self.plc.R), 
-                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
+        self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+                operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
+                                           self.plc.L[i], self.plc.R[i]), 
+                k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
-        else:
-            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_Operator0(self.H.left, self.H.mid, self.plc.R), 
-                    k=lcz_k, name="lanczos_bidiag_left")
-            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_OperatorN(self.H.mid, self.H.right, self.plc.L), 
-                    k=lcz_k, name="lanczos_bidiag_right")
-            
-            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid, self.H.mid, 
-                                               self.plc.L, self.plc.R), 
-                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
+#        else:
+#            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
+#                    operator=Lanczos_Operator0(self.H.left, self.H.mid, self.plc.R), 
+#                    k=lcz_k, name="lanczos_bidiag_left")
+#            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
+#                    operator=Lanczos_OperatorN(self.H.mid, self.H.right, self.plc.L), 
+#                    k=lcz_k, name="lanczos_bidiag_right")
+#            
+#            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+#                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid, self.H.mid, 
+#                                               self.plc.L, self.plc.R), 
+#                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
-    def RL_boundary_graph(self, Hi):
-        x = tf.einsum('bij,cj->bci', Hi, self.plc.state[0])
-        return tf.einsum('bci,ai->abc', x, tf.conj(self.plc.state[0]))
+    def RL_boundary_graph(self, Hi, s):
+        x = tf.einsum('bij,cj->bci', Hi, s)
+        return tf.einsum('bci,ai->abc', x, tf.conj(s))
     
-    def R_graph(self, Hi, s):
-        x = tf.einsum('abc,fcj->abfj', self.plc.R, s)
-        x = tf.einsum('ebij,abfj->aefi', Hi, x)
-        return tf.einsum('dai,aefi->def', tf.conj(s), x)
+    def R_graph(self, i):
+        x = tf.einsum('abc,fcj->abfj', self.plc.R[i+1], self.plc.state[i+1])
+        x = tf.einsum('ebij,abfj->aefi', self.H.mid[i], x)
+        return tf.einsum('dai,aefi->def', tf.conj(self.plc.state[i+1]), x)
     
-    def L_graph(self, Hi, s):
-        x = tf.einsum('def,fcj->decj', self.plc.L, s)
-        x = tf.einsum('ebij,decj->dbci', Hi, x)
-        return tf.einsum('dai,dbci->abc', tf.conj(s), x)
-        #also changed the indices in einsum to take into account the dagger
+    def L_graph(self, i):
+        x = tf.einsum('def,fcj->decj', self.plc.L[i], self.plc.state[i+1])
+        x = tf.einsum('ebij,decj->dbci', self.H.mid[i], x)
+        return tf.einsum('dai,dbci->abc', tf.conj(self.plc.state[i+1]), x)
 
 class Placeholders(object):
-    def __init__(self, d, D):
+    def __init__(self, d, D, DH):
         self.state = [tf.placeholder(dtype=tf.complex64, shape=(d, d))]
-        self.state+= [tf.placeholder(dtype=tf.complex64, shape=(D1, D2, d)) for (D1, D2) in zip(D[:-1], D[1:])]
-        self.R = tf.placeholder(dtype=tf.complex64)
-        self.L = tf.placeholder(dtype=tf.complex64)
+        self.R = [tf.placeholder(dtype=tf.complex64, shape=(D[0], DH, D[0]))]
+        self.L = [tf.placeholder(dtype=tf.complex64, shape=(D[0], DH, D[0]))]
+        for i in range(1, len(D)):
+            self.state.append(tf.placeholder(dtype=tf.complex64, shape=(D[i-1], D[i], d)))
+            self.R.append(tf.placeholder(dtype=tf.complex64, shape=(D[i], DH, D[i])))
+            self.L.append(tf.placeholder(dtype=tf.complex64, shape=(D[i], DH, D[i])))
         
 class Hamiltonian(object):
     def __init__(self, H0, Hs, HN):
@@ -99,7 +100,7 @@ class Hamiltonian(object):
 class Lanczos_OperatorM(object):
     def __init__(self, DL, DR, H1, H2, L, R):
         self.DL, self.DR = DL, DR
-        self.d = H1.shape[-1]
+        self.d = int(H1.shape[-1])
         self.dims = DL * DR * self.d * self.d
         self.shape = [self.dims, self.dims]
         self.dtype = tf.complex64
@@ -128,7 +129,7 @@ class Lanczos_OperatorM(object):
     
 class Lanczos_Operator0(object):
     def __init__(self, H1, H2, LR):
-        self.d = H1.shape[-1]
+        self.d = int(H1.shape[-1])
         self.dims = self.d**3
         self.shape = [self.dims, self.dims]
         self.dtype = tf.complex64

@@ -22,7 +22,7 @@ class DMRG(object):
         ## Initialize and normalize states to canonical form
         self.initialize_states()
         self.normalize_states()
-        print('\nStates succesfully initialized in right canonical form!')
+        print('\nStates succesfully initialized in right canonical form!\n')
         
         ## Create Ops object
         self.ops = Operations(D, H0, Hs, HN, lcz_k)
@@ -104,7 +104,7 @@ class DMRG(object):
     
     def apply_lanczos0(self):
         ## Apply Lanczos
-        U, V, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R : self.R[0]})
+        U, V, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R[0] : self.R[0]})
         # U: probably useless, V: Lanczos right vectors stored as rows!
         # alpha: diagonal elements of the bidiagonal matrix, beta[:-1]: off-diagonal elements
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
@@ -117,7 +117,7 @@ class DMRG(object):
         return self.energy
         
     def apply_lanczosN(self):
-        U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L : self.L[-1]})
+        U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L[-1] : self.L[-1]})
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
         
         ## Updates
@@ -130,8 +130,8 @@ class DMRG(object):
     def apply_lanczosM(self, i):
         ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
         ## For i=0 use lanczos0, for i=N-1 use lanczosN
-        U, V, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L : self.L[i-1],
-                                          self.ops.plc.R : self.R[i+1]})
+        U, V, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1],
+                                          self.ops.plc.R[i+1] : self.R[i+1]})
         eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
         
         U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
@@ -158,10 +158,10 @@ class DMRG(object):
               self.ops.plc.state : self.state[i+1]})
     
     def update_R_boundary(self):
-        self.R[-1] = self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})
+        self.R[-1] = self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state[0] : self.state[-1]})
         
     def update_L_boundary(self):
-        self.L[0] = self.sess.run(self.ops.L_boundary, feed_dict={self.ops.plc.state : self.state[0]})
+        self.L[0] = self.sess.run(self.ops.L_boundary, feed_dict={self.ops.plc.state[0] : self.state[0]})
         
 
 ################################################
@@ -170,10 +170,10 @@ class DMRG(object):
 class DMRG_Hlist(DMRG):
     def initialize_RL(self):
         ## Calculate first R (begining from right)
-        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state : self.state[-1]})]       
+        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state[0] : self.state[-1]})]       
         for i in range(self.ops.N - 2):
-            self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R : self.R[i], 
-                                        self.ops.plc.state : self.states[self.ops.N - 2 - i]}))
+            self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R[i] : self.R[i], 
+                                        self.ops.plc.state[i] : self.state[self.ops.N - 2 - i]}))
     
         self.R = self.R[::-1]
         self.L = (self.ops.N - 1) * [None]
@@ -181,11 +181,11 @@ class DMRG_Hlist(DMRG):
     def update_L(self, i):
         ## Here i is the index of L to be updated: 1 <= i <= N-2
         ## For i=0 use boundary function
-        self.L[i] = self.sess.run(self.ops.L[i-1], feed_dict={self.ops.plc.L : self.L[i-1], 
-              self.ops.plc.state : self.state[i]})
+        self.L[i] = self.sess.run(self.ops.L[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1], 
+              self.ops.plc.state[i] : self.state[i]})
     
     def update_R(self, i):
         ## Here i is the index of L to be updated: 0 <= i <= N-3
         ## For i=N-2 use boundary function
-        self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R : self.R[i+1],
-              self.ops.plc.state : self.state[i]})
+        self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R[i+1] : self.R[i+1],
+              self.ops.plc.state[i] : self.state[i]})
