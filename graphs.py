@@ -42,16 +42,15 @@ class Operations(object):
     def create_lanczos_ops(self, lcz_k):
         self.lanczos0 = lcz.lanczos_algorithm(
                 operator=lcz.Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R[0]), 
-                B_init=, k=lcz_k, name="lanczos_bidiag_left")
+                B_init=self.B_boundary0_graph(), k=lcz_k, name="lanczos_bidiag_left")
         
         self.lanczosN = lcz.lanczos_algorithm(
-                operator=Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L[-1]), 
-                B_init=, k=lcz_k, name="lanczos_bidiag_right")
+                operator=lcz.Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L[-1]), 
+                B_init=self.B_boundaryN_graph(), k=lcz_k, name="lanczos_bidiag_right")
             
         self.lanczosM = [lcz.lanczos_algorithm(
-                operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
-                                           self.plc.L[i], self.plc.R[i]), 
-                B_init=, k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
+                operator=lcz.Lanczos_OperatorM(self.H.mid[i], self.H.mid[i+1], self.plc.L[i], self.plc.R[i]), 
+                B_init=self.B_graph(i+1), k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi, s):
         x = tf.einsum('bij,cj->bci', Hi, s)
@@ -66,6 +65,15 @@ class Operations(object):
         x = tf.einsum('def,fcj->decj', self.plc.L[i], self.plc.state[i+1])
         x = tf.einsum('ebij,decj->dbci', self.H.mid[i], x)
         return tf.einsum('dai,dbci->abc', tf.conj(self.plc.state[i+1]), x)
+    
+    def B_graph(self, i):
+        return tf.einsum('abi,bcj->acij', self.state[i], self.state[i+1])
+    
+    def B_boundary0_graph(self):
+        return tf.einsum('ai,abj->bij', self.state[0], self.state[1])
+    
+    def B_boundaryN_graph(self):
+        return tf.einsum('abi,bj->aij', self.state[-1], self.state[0])
 
 class Placeholders(object):
     def __init__(self, d, D, DH):
