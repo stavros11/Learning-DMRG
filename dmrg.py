@@ -106,7 +106,9 @@ class DMRG(object):
     
     def apply_lanczos0(self):
         ## Apply Lanczos
-        V_lz, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R[0] : self.R[0]})
+        V_lz, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R[0] : self.R[0],
+                                                                        self.ops.plc.state[0] : self.state[0],
+                                                                        self.ops.plc.state[1] : self.state[1]})
         #V: Lanczos vectors (see lanczos_algorithm functions in lanczos.py)
         # alpha: diagonal elements of the tridiagonal matrix, beta: off-diagonal elements
         
@@ -123,7 +125,9 @@ class DMRG(object):
         return self.energy
         
     def apply_lanczosN(self):
-        V_lz, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L[-1] : self.L[-1]})
+        V_lz, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L[-1] : self.L[-1],
+                                                                        self.ops.plc.state[-1] : self.state[-2],
+                                                                        self.ops.plc.state[0] : self.state[-1]})
         
         ## Diagonalize k x k matrix
         eig_vals, eig_vec = eigtrd(alpha, beta)
@@ -141,7 +145,9 @@ class DMRG(object):
         ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
         ## For i=0 use lanczos0, for i=N-1 use lanczosN
         V_lz, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1],
-                                          self.ops.plc.R[i+1] : self.R[i+1]})
+                                          self.ops.plc.R[i+1] : self.R[i+1],
+                                          self.ops.plc.state[i] : self.state[i],
+                                          self.ops.plc.state[i+1] : self.state[i+1]})
         
         ## Diagonalize k x k matrix
         eig_vals, eig_vec = eigtrd(alpha, beta)
