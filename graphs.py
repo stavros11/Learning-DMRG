@@ -6,6 +6,7 @@ Created on Mon Sep  3 18:40:09 2018
 """
 
 import tensorflow as tf
+import lanczos as lcz
    
 class Operations(object):
     def __init__(self, D, H0, Hs, HN, lcz_k):
@@ -37,35 +38,20 @@ class Operations(object):
         for i in range(self.N - 4):
             self.R.append(self.R_graph(i))
             self.L.append(self.L_graph(i))
-#        else:
-#            self.R = self.R_graph(self.H.mid)
-#            self.L = self.L_graph(self.H.mid)
             
     def create_lanczos_ops(self, lcz_k):
-        self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-                operator=Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R[0]), 
-                k=lcz_k, name="lanczos_bidiag_left")
-        self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
+        self.lanczos0 = lcz.lanczos_algorithm(
+                operator=lcz.Lanczos_Operator0(self.H.left, self.H.mid[0], self.plc.R[0]), 
+                B_init=, k=lcz_k, name="lanczos_bidiag_left")
+        
+        self.lanczosN = lcz.lanczos_algorithm(
                 operator=Lanczos_OperatorN(self.H.mid[-1], self.H.right, self.plc.L[-1]), 
-                k=lcz_k, name="lanczos_bidiag_right")
+                B_init=, k=lcz_k, name="lanczos_bidiag_right")
             
-        self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
+        self.lanczosM = [lcz.lanczos_algorithm(
                 operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid[i], self.H.mid[i+1], 
                                            self.plc.L[i], self.plc.R[i]), 
-                k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
-        
-#        else:
-#            self.lanczos0 = tf.contrib.solvers.lanczos.lanczos_bidiag(
-#                    operator=Lanczos_Operator0(self.H.left, self.H.mid, self.plc.R), 
-#                    k=lcz_k, name="lanczos_bidiag_left")
-#            self.lanczosN = tf.contrib.solvers.lanczos.lanczos_bidiag(
-#                    operator=Lanczos_OperatorN(self.H.mid, self.H.right, self.plc.L), 
-#                    k=lcz_k, name="lanczos_bidiag_right")
-#            
-#            self.lanczosM = [tf.contrib.solvers.lanczos.lanczos_bidiag(
-#                    operator=Lanczos_OperatorM(self.D[i-1], self.D[i+1], self.H.mid, self.H.mid, 
-#                                               self.plc.L, self.plc.R), 
-#                    k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
+                B_init=, k=lcz_k, name="lanczos_bidiag_mid%d"%i) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi, s):
         x = tf.einsum('bij,cj->bci', Hi, s)
