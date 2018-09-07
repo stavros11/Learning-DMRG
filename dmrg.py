@@ -11,6 +11,11 @@ from graphs import Operations
 from scipy.linalg import eigh_tridiagonal as eigtrd
 from numpy.linalg import svd
 
+###################################################################
+### Only DMRG_Hlist is supported currently because tf.einsum    ###
+### requires placeholders of specific shape                     ###
+###################################################################
+
 class DMRG(object):
     def __init__(self, D, d, H0, Hs, HN, lcz_k):
         ### DMRG parameters ###
@@ -95,34 +100,39 @@ class DMRG(object):
         
         return energy_list
     
-    ##### IMPORTANT! #######
-    ### Also check dimensions in lanczos ops in graphs.py module!
-    
     #################################
     ##### Functions that assist #####
     #################################
     
     def apply_lanczos0(self):
         ## Apply Lanczos
-        U, V, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R[0] : self.R[0]})
-        # U: probably useless, V: Lanczos right vectors stored as rows!
-        # alpha: diagonal elements of the bidiagonal matrix, beta[:-1]: off-diagonal elements
-        eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
+        V_lz, alpha, beta = self.sess.run(self.ops.lanczos0, feed_dict={self.ops.plc.R[0] : self.R[0]})
+        #V: Lanczos vectors (see lanczos_algorithm functions in lanczos.py)
+        # alpha: diagonal elements of the tridiagonal matrix, beta: off-diagonal elements
         
-        ## Update states by doing SVD on the updated B = V.dot(eigenvector)
+        ## Diagonalize k x k matrix
+        eig_vals, eig_vec = eigtrd(alpha, beta)
+        ## Transform the ground state eigenvector to B
+        B = np.eisum('a,abcd->bcd', eig_vec[0], V_lz)
+        
+        ## Update states by doing SVD on the updated B
         self.energy = eig_vals[0]
-        self.state[0], S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.d, self.D[1]*self.d), full_matrices=False)
+        self.state[0], S, V = svd(B.reshape(self.d, self.D[1]*self.d), full_matrices=False)
         self.state[1] = np.einsum('ab,bcd->acd', np.diag(S), V.reshape(self.d, self.D[1], self.d))
         
         return self.energy
         
     def apply_lanczosN(self):
-        U, V, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L[-1] : self.L[-1]})
-        eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
+        V_lz, alpha, beta = self.sess.run(self.ops.lanczosN, feed_dict={self.ops.plc.L[-1] : self.L[-1]})
+        
+        ## Diagonalize k x k matrix
+        eig_vals, eig_vec = eigtrd(alpha, beta)
+        ## Transform the ground state eigenvector to B
+        B = np.eisum('a,abcd->bcd', eig_vec[0], V_lz)
         
         ## Updates
         self.energy = eig_vals[0]
-        U, S, self.state[-1] = svd((V.dot(eig_vec[:, 0])).reshape(self.D[-2]*self.d, self.d), full_matrices=False)
+        U, S, self.state[-1] = svd(B.reshape(self.D[-2]*self.d, self.d), full_matrices=False)
         self.state[-2] = np.einsum('abc,cd->adb', U.reshape(self.D[-2], self.d, self.d), np.diag(S))
         
         return self.energy
@@ -130,11 +140,15 @@ class DMRG(object):
     def apply_lanczosM(self, i):
         ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
         ## For i=0 use lanczos0, for i=N-1 use lanczosN
-        U, V, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1],
+        V_lz, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1],
                                           self.ops.plc.R[i+1] : self.R[i+1]})
-        eig_vals, eig_vec = eigtrd(alpha, beta[:-1])
         
-        U, S, V = svd((V.dot(eig_vec[:, 0])).reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
+        ## Diagonalize k x k matrix
+        eig_vals, eig_vec = eigtrd(alpha, beta)
+        ## Transform the ground state eigenvector to B
+        B = np.eisum('a,abcde->bcde', eig_vec[0], V_lz)
+        
+        U, S, V = svd(B.reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
         ## Assume Di < d D_{i-1} and truncate
         U, S, V = U[:, :self.D[i]], S[:self.D[i]], V[:self.D[i]]
         
@@ -167,6 +181,7 @@ class DMRG(object):
 ################################################
 #### For the case where Hs is given as list ####
 ################################################
+        
 class DMRG_Hlist(DMRG):
     def initialize_RL(self):
         ## Calculate first R (begining from right)
@@ -189,3 +204,4 @@ class DMRG_Hlist(DMRG):
         ## For i=N-2 use boundary function
         self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R[i+1] : self.R[i+1],
               self.ops.plc.state[i] : self.state[i]})
+    
