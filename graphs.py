@@ -31,13 +31,13 @@ class Operations(object):
         self.create_lanczos_ops(lcz_k=lcz_k)
         
     def create_RL_ops(self):
-        self.R_boundary = self.RL_boundary_graph(self.H.right, self.plc.state[0])
-        self.L_boundary = self.RL_boundary_graph(self.H.left, self.plc.state[0])
-        
-        self.R, self.L = [], []
+        self.L = [self.RL_boundary_graph(self.H.left, self.plc.state[0])]
+        self.R = []
         for i in range(self.N - 3):
             self.R.append(self.R_graph(i))
             self.L.append(self.L_graph(i))
+            
+        self.R.append(self.RL_boundary_graph(self.H.right, self.plc.state[0]))
             
     def create_lanczos_ops(self, lcz_k):
         self.lanczos0 = lcz.lanczos_algorithm(

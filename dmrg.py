@@ -46,11 +46,12 @@ class DMRG(object):
     
     def initialize_states(self):
         ## Initialize MPS: List of complex (D, D, d) tensors
-        self.state = [np.random.random(size=(D1, D2, self.d)) + 1j * np.random.random(
-                size=(D1, D2, self.d)) for (D1, D2) in zip(self.D[:-1], self.D[1:])]
+        self.state = [(np.random.random(size=(D1, D2, self.d)) + 1j * np.random.random(
+                size=(D1, D2, self.d))).astype(np.complex64) for (D1, D2) in zip(self.D[:-1], self.D[1:])]
         ## First and last states are (d, d) (for boundary D=d in normal form)
-        self.state = ([np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))] +
-                       self.state + [np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))])
+        self.state = ([(np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))).astype(np.complex64)] +
+                       self.state + 
+                       [(np.random.random(size=(self.d, self.d)) + 1j * np.random.random(size=(self.d, self.d))).astype(np.complex64)])
         
     def normalize_states(self):
         ## Start from right
@@ -72,9 +73,9 @@ class DMRG(object):
         U, S, self.state[0] = svd(self.state[0], full_matrices=False)
         
     def initialize_RL(self):       
-        self.R, self.L = (self.ops.N - 1) * [None], (self.ops.N - 1) * [None]
+        self.R, self.L = (self.ops.N - 2) * [None], (self.ops.N - 2) * [None]
         self.update_R_boundary()
-        for i in range(self.ops.N - 3, -1, -1):
+        for i in range(self.ops.N - 4, -1, -1):
             self.update_R(i)
             
     def sweep(self):
@@ -166,48 +167,25 @@ class DMRG(object):
         return self.energy
         
     def update_L(self, i):
-        ## Here i is the index of L to be updated: 1 <= i <= N-1
-        ## For i=0 use boundary function
-        self.L[i] = self.sess.run(self.ops.L, feed_dict={self.ops.plc.L : self.L[i-1], 
-              self.ops.plc.state : self.state[i]})
-    
-    def update_R(self, i):
-        ## Here i is the index of L to be updated: 0 <= i <= N-3
-        ## For i=N-2 use boundary function
-        self.R[i] = self.sess.run(self.ops.R, feed_dict={self.ops.plc.R : self.R[i+1],
-              self.ops.plc.state : self.state[i+1]})
-    
-    def update_R_boundary(self):
-        self.R[-1] = self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state[0] : self.state[-1]})
-        
-    def update_L_boundary(self):
-        self.L[0] = self.sess.run(self.ops.L_boundary, feed_dict={self.ops.plc.state[0] : self.state[0]})
-        
-
-################################################
-#### For the case where Hs is given as list ####
-################################################
-        
-class DMRG_Hlist(DMRG):
-    def initialize_RL(self):
-        ## Calculate first R (begining from right)
-        self.R = [self.sess.run(self.ops.R_boundary, feed_dict={self.ops.plc.state[0] : self.state[-1]})]       
-        for i in range(self.ops.N - 2):
-            self.R.append(self.sess.run(self.ops.R[self.ops.N - 3 - i], feed_dict={self.ops.plc.R[i] : self.R[i], 
-                                        self.ops.plc.state[i] : self.state[self.ops.N - 2 - i]}))
-    
-        self.R = self.R[::-1]
-        self.L = (self.ops.N - 1) * [None]
-        
-    def update_L(self, i):
         ## Here i is the index of L to be updated: 1 <= i <= N-2
         ## For i=0 use boundary function
-        self.L[i] = self.sess.run(self.ops.L[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1], 
-              self.ops.plc.state[i] : self.state[i]})
+        self.L[i] = self.sess.run(self.ops.L[i], feed_dict={self.ops.plc.L[i-1] : self.L[i-1], 
+              self.ops.plc.state[i+1] : self.state[i+1]})
     
     def update_R(self, i):
         ## Here i is the index of L to be updated: 0 <= i <= N-3
         ## For i=N-2 use boundary function
+        
+        print(self.R[i+1].shape)
+        print(self.ops.plc.R[i+1])
+        
+        print(self.state[i].shape)
+        print(self.ops.plc.state[i])
         self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R[i+1] : self.R[i+1],
               self.ops.plc.state[i] : self.state[i]})
     
+    def update_R_boundary(self):
+        self.R[-1] = self.sess.run(self.ops.R[-1], feed_dict={self.ops.plc.state[0] : self.state[-1]})
+        
+    def update_L_boundary(self):
+        self.L[0] = self.sess.run(self.ops.L[0], feed_dict={self.ops.plc.state[0] : self.state[0]})
