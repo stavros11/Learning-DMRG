@@ -16,23 +16,19 @@ def lanczos_algorithm(operator, B_init, k):
     vector = tf.Variable(tf.zeros(shape=(k,) + tuple(B_init.get_shape().as_list())))
     ## Note: to transform the eigenvectors of the tridiagonal, sum over the first index of V
     ## which has dimension k
-    
-    v_old = B_init
     vector[0] = B_init
     
-    w = operator.apply(B_init)
+    w = operator.apply(vector[0])
     alpha[0] = contract_vectors(w, B_init)
     w = w - alpha[0] * B_init
     
     for i in range(1, k):
         beta[i-1] = contract_vectors(w, w)
-        v_new = v_old / beta[i]
-        vector[i] = v_new
+        vector[i] = vector[i-1] / beta[i]
         
-        w = operator.apply(v_new)
-        alpha[i] = contract_vectors(w, v_new)
-        w = w - alpha[i] * v_new - beta[i-1] * v_old
-        v_old = v_new
+        w = operator.apply(vector[i])
+        alpha[i] = contract_vectors(w, vector[i])
+        w = w - alpha[i] * vector[i] - beta[i-1] * vector[i-1]
         
     return vector, alpha, beta
         
@@ -41,7 +37,7 @@ def contract_vectors(up, down):
     return tf.reduce_sum(tf.multiply(tf.conj(up), down))
 
 class Lanczos_OperatorM(object):
-    def __init__(self, DL, DR, H1, H2, L, R):
+    def __init__(self, H1, H2, L, R):
         self.H1, self.H2 = H1, H2
         self.L, self.R = L, R
         
