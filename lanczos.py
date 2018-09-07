@@ -42,12 +42,6 @@ def contract_vectors(up, down):
 
 class Lanczos_OperatorM(object):
     def __init__(self, DL, DR, H1, H2, L, R):
-        self.DL, self.DR = DL, DR
-        self.d = int(H1.shape[-1])
-        self.dims = DL * DR * self.d * self.d
-        self.shape = [self.dims, self.dims]
-        self.dtype = tf.complex64
-
         self.H1, self.H2 = H1, H2
         self.L, self.R = L, R
         
@@ -60,27 +54,18 @@ class Lanczos_OperatorM(object):
     
 class Lanczos_Operator0(object):
     def __init__(self, H1, H2, LR):
-        self.d = int(H1.shape[-1])
-        self.dims = self.d**3
-        self.shape = [self.dims, self.dims]
-        self.dtype = tf.complex64
-        
         self.H1, self.H2 = H1, H2
         self.LR = LR
         
-    def apply(self, x):
-        B = tf.reshape(x, shape=(self.d, self.d, self.d))
+    def apply(self, B):
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,dbkj->adik', LB, self.H2)
-        LB = tf.einsum('adik,dli->lka', LB, self.H1)
-        ## Final indices in the order of the TN-graph
-        return tf.reshape(LB, shape=(self.dims,))
+        return tf.einsum('adik,dli->lka', LB, self.H1)
+        ## Final indices in order DL, DR, d, d
     
 class Lanczos_OperatorN(Lanczos_Operator0):
-    def apply(self, x):
-        B = tf.reshape(x, shape=(self.d, self.d, self.d))
+    def apply(self, B):
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
-        LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
-        ## Final indices in the order of the TN-graph
-        return tf.reshape(LB, shape=(self.dims,))
+        return tf.einsum('adkj,dlj->akl', LB, self.H2)
+        ## Final indices in order DL, DR, d, d
