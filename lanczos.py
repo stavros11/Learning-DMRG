@@ -24,7 +24,7 @@ def lanczos_algorithm(operator, B_init, k):
     
     for i in range(1, k):
         beta[i-1].assign(contract_vectors(w, w))
-        vector[i].assign(vector[i-1] / beta[i])
+        vector[i].assign(vector[i-1] / beta[i-1])
         
         w = operator.apply(vector[i])
         alpha[i].assign(contract_vectors(w, vector[i]))
@@ -56,12 +56,12 @@ class Lanczos_Operator0(object):
     def apply(self, B):
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,dbkj->adik', LB, self.H2)
-        return tf.einsum('adik,dli->lka', LB, self.H1)
-        ## Final indices in order DL, DR, d, d
+        return tf.einsum('adik,dli->alk', LB, self.H1)
+        ## Final indices in order D, d, d
     
 class Lanczos_OperatorN(Lanczos_Operator0):
     def apply(self, B):
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
         return tf.einsum('adkj,dlj->akl', LB, self.H2)
-        ## Final indices in order DL, DR, d, d
+        ## Final indices in order D, d, d
