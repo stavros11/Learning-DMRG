@@ -6,7 +6,7 @@ Created on Thu Sep  6 13:41:38 2018
 """
 
 import numpy as np
-from dmrg import DMRG_Hlist as DMRG
+from dmrg import DMRG
 pauli_X = np.array([[0., 1.], [1., 0.]])
 pauli_Z = np.diag([1., -1.])
 
@@ -39,11 +39,11 @@ def TFIM_MPO(N, h):
 
 N = 6
 H0, Hs, HN = TFIM_MPO(N=N, h=0.1)
-Hs = np.array([Hs for i in range(N)])
+Hs = np.array([Hs for i in range(N-2)])
 
 ## Bond dimensions (len=N-1)
 D = [2, 3, 5, 3, 2]
-x = DMRG(D=D, d=2, H0=H0, Hs=Hs, HN=HN, lcz_k=5)
+x = DMRG(D=D, d=2, H0=H0, Hs=Hs, HN=HN, lcz_k=10)
 
 
 
