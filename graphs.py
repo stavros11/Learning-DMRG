@@ -49,7 +49,7 @@ class Operations(object):
                 B_init=self.B_boundaryN_graph(), k=lcz_k)
             
         self.lanczosM = [lcz.lanczos_algorithm(
-                operator=lcz.Lanczos_OperatorM(self.H.mid[i], self.H.mid[i+1], self.plc.L[i], self.plc.R[i]), 
+                operator=lcz.Lanczos_OperatorM(self.H.mid[i], self.H.mid[i+1], self.plc.L[i], self.plc.R[i+1]), 
                 B_init=self.B_graph(i+1), k=lcz_k) for i in range(self.N - 3)]
         
     def RL_boundary_graph(self, Hi, s):
