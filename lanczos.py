@@ -58,16 +58,6 @@ class Lanczos_OperatorM(object):
         return tf.einsum('afgij,efg->aeij', LB, self.R)
         ## Final indices in order DL, DR, d, d
     
-    ## Fixed indices to apply adjoint a-c, i-k, j-l, e-g
-    def apply_adjoint(self, x):
-        B = tf.reshape(x, shape=(self.DL, self.DR, self.d, self.d))
-        LB = tf.einsum('cba,cgkl->abgkl', tf.conj(self.L), B)
-        LB = tf.einsum('abgkl,bdki->adgil', LB, tf.conj(self.H1))
-        LB = tf.einsum('adgil,dflj->afgij', LB, tf.conj(self.H2))
-        LB = tf.einsum('afgij,gfe->aeij', LB, tf.conj(self.R))
-        ## Final indices in order DL, d, d, DR
-        return tf.reshape(LB, shape=(self.dims,))
-    
 class Lanczos_Operator0(object):
     def __init__(self, H1, H2, LR):
         self.d = int(H1.shape[-1])
@@ -86,27 +76,11 @@ class Lanczos_Operator0(object):
         ## Final indices in the order of the TN-graph
         return tf.reshape(LB, shape=(self.dims,))
     
-    def apply_adjoint(self, x):
-        B = tf.reshape(x, shape=(self.d, self.d, self.d))
-        LB = tf.einsum('cba,cij->abij', tf.conj(self.LR), B)
-        LB = tf.einsum('abij,bdik->adkj', LB, tf.conj(self.H2))
-        LB = tf.einsum('adkj,djl->akl', LB, tf.conj(self.H1))
-        ## Final indices in the order of the TN-graph
-        return tf.reshape(LB, shape=(self.dims,))
-    
 class Lanczos_OperatorN(Lanczos_Operator0):
     def apply(self, x):
         B = tf.reshape(x, shape=(self.d, self.d, self.d))
         LB = tf.einsum('abc,cij->abij', self.LR, B)
         LB = tf.einsum('abij,bdki->adkj', LB, self.H1)
         LB = tf.einsum('adkj,dlj->akl', LB, self.H2)
-        ## Final indices in the order of the TN-graph
-        return tf.reshape(LB, shape=(self.dims,))
-    
-    def apply_adjoint(self, x):
-        B = tf.reshape(x, shape=(self.d, self.d, self.d))
-        LB = tf.einsum('cba,cij->abij', tf.conj(self.LR), B)
-        LB = tf.einsum('abij,bdik->adkj', LB, tf.conj(self.H1))
-        LB = tf.einsum('adkj,djl->akl', LB, tf.conj(self.H2))
         ## Final indices in the order of the TN-graph
         return tf.reshape(LB, shape=(self.dims,))
