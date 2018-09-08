@@ -172,7 +172,6 @@ class DMRG(object):
                                           self.ops.plc.state[i] : self.state[i],
                                           self.ops.plc.state[i+1] : self.state[i+1]})
         
-        print(alpha, beta)
         ## Diagonalize k x k matrix
         eig_vals, eig_vec = diagonalize(alpha, beta)
         ## Transform the ground state eigenvector to B
