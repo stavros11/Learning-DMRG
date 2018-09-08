@@ -8,29 +8,28 @@ Created on Fri Sep  7 15:48:28 2018
 import tensorflow as tf
 
 def lanczos_algorithm(operator, B_init, k):
-    # The diagonal elements of the tridiagonal matrix
-    alpha = tf.Variable(tf.zeros(shape=(k,), dtype=tf.complex64))
-    # The off-diagonal elements of the triagonal matrix
-    beta = tf.Variable(tf.zeros(shape=(k-1,), dtype=tf.complex64))
-    # The matrix V used to transform the eigenvectors
-    vector = tf.Variable(tf.zeros(shape=(k,) + tuple(B_init.get_shape().as_list()), dtype=tf.complex64))
+    # alpha: The diagonal elements of the tridiagonal matrix
+    # beta: The off-diagonal elements of the triagonal matrix
+    # vector: The matrix V used to transform the eigenvectors
+
     ## Note: to transform the eigenvectors of the tridiagonal, sum over the first index of V
     ## which has dimension k
     
-    vector[0].assign(B_init)
+    vector = [B_init]
     w = operator.apply(vector[0])
-    alpha[0].assign(contract_vectors(w, B_init))
+    alpha = [contract_vectors(w, B_init)]
     w = w - alpha[0] * B_init
     
+    beta = []
     for i in range(1, k):
-        beta[i-1].assign(contract_vectors(w, w))
-        vector[i].assign(vector[i-1] / beta[i-1])
+        beta.append(contract_vectors(w, w))
+        vector.append(vector[i-1] / beta[i-1])
         
         w = operator.apply(vector[i])
-        alpha[i].assign(contract_vectors(w, vector[i]))
+        alpha.append(contract_vectors(w, vector[i]))
         w = w - alpha[i] * vector[i] - beta[i-1] * vector[i-1]
         
-    return vector, alpha, beta
+    return [vector, alpha, beta]
         
 def contract_vectors(up, down):
     ## Assumes same order of indices in both Bs
