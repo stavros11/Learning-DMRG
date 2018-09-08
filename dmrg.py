@@ -8,8 +8,22 @@ Created on Mon Sep  3 11:48:26 2018
 import numpy as np
 import tensorflow as tf
 from graphs import Operations
-from scipy.linalg import eigh_tridiagonal as eigtrd
 from numpy.linalg import svd
+
+## Using the general eigh function because eigh_tridiagonal does not support complex! ##
+## Change in the future for better performance ##
+from scipy.linalg import eigh
+
+def diagonalize(alpha, beta):
+    ## Takes diagonal (alpha) and off-diagonal (beta) elements of
+    ## tridiagonal matrix and returns its eigenvalues and eigenvectors
+    d = len(alpha)
+    ## Create matrix
+    A = np.diag(alpha)
+    A[np.arange(d-1), np.arange(1, d)] = beta
+    A[np.arange(1,d), np.arange(d-1)] = beta
+    
+    return eigh(A)
 
 ###################################################################
 ### Only DMRG_Hlist is supported currently because tf.einsum    ###
@@ -90,6 +104,9 @@ class DMRG(object):
             energy_list.append(self.apply_lanczosM_to_right(i))
             self.update_R(i-2)
             self.update_L(i)
+            print('Site %d'%(i+1))
+        
+        print('\nRight sweep completed!\n')
         
         ## Update right boundary
         energy_list.append(self.apply_lanczosN())
@@ -99,9 +116,12 @@ class DMRG(object):
         energy_list.append(self.apply_lanczosM_to_left(self.ops.N - 3))
         self.update_R(self.ops.N - 4)
         for i in range(self.ops.N - 4, 0, -1):
-            energy_list.append(self.apply_lanczosM(i))
+            energy_list.append(self.apply_lanczosM_to_left(i))
             self.update_R(i-1)
             self.update_L(i+1)
+            print('Site %d'%(i+2))
+        
+        print('\nLeft sweep completed!\n')
         
         return energy_list
     
@@ -118,9 +138,9 @@ class DMRG(object):
         # alpha: diagonal elements of the tridiagonal matrix, beta: off-diagonal elements
         
         ## Diagonalize k x k matrix
-        eig_vals, eig_vec = eigtrd(alpha, beta)
+        eig_vals, eig_vec = diagonalize(alpha, beta)
         ## Transform the ground state eigenvector to B
-        B = np.eisum('a,abcd->bcd', eig_vec[0], V_lz)
+        B = np.einsum('a,abcd->bcd', eig_vec[0], V_lz)
         
         ## Update states by doing SVD on the updated B
         self.energy = eig_vals[0]
@@ -135,9 +155,9 @@ class DMRG(object):
                                                                         self.ops.plc.state[0] : self.state[-1]})
         
         ## Diagonalize k x k matrix
-        eig_vals, eig_vec = eigtrd(alpha, beta)
+        eig_vals, eig_vec = diagonalize(alpha, beta)
         ## Transform the ground state eigenvector to B
-        B = np.eisum('a,abcd->bcd', eig_vec[0], V_lz)
+        B = np.einsum('a,abcd->bcd', eig_vec[0], V_lz)
         
         ## Updates
         self.energy = eig_vals[0]
@@ -152,10 +172,11 @@ class DMRG(object):
                                           self.ops.plc.state[i] : self.state[i],
                                           self.ops.plc.state[i+1] : self.state[i+1]})
         
+        print(alpha, beta)
         ## Diagonalize k x k matrix
-        eig_vals, eig_vec = eigtrd(alpha, beta)
+        eig_vals, eig_vec = diagonalize(alpha, beta)
         ## Transform the ground state eigenvector to B
-        B = np.eisum('a,abcde->bcde', eig_vec[0], V_lz)
+        B = np.einsum('a,abcde->bcde', eig_vec[0], V_lz)
         
         return B, eig_vals[0]
         
@@ -168,8 +189,9 @@ class DMRG(object):
         U, S, V = U[:, :self.D[i]], S[:self.D[i]], V[:self.D[i]]
         
         ## Updates
-        self.state[i] = U.reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
-        self.state[i+1] = (np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
+        self.state[i] = np.transpose(U.reshape(self.D[i-1], self.d, self.D[i]), axes=(0, 2, 1))
+        self.state[i+1] = np.transpose((np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]), 
+                  axes=(0, 2, 1))
         
         return self.energy
     
@@ -181,8 +203,9 @@ class DMRG(object):
         U, S, V = U[:,:self.D[i]], S[:self.D[i]], V[:self.D[i]]
         
         ## Updates
-        self.state[i+1] = V.reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
-        self.state[i] = (U.dot(np.diag(S))).reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
+        self.state[i+1] = np.transpose(V.reshape(self.D[i], self.d, self.D[i+1]), axes=(0, 2, 1))
+        self.state[i] = np.transpose((U.dot(np.diag(S))).reshape(self.D[i-1], self.d, self.D[i]), 
+                  axes=(0, 2, 1))
         
         return self.energy
         
