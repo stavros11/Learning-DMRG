@@ -37,13 +37,16 @@ def TFIM_MPO(N, h):
     return H0, Hs, HN
 
 
-N = 6
-H0, Hs, HN = TFIM_MPO(N=N, h=0.1)
+N = 10
+H0, Hs, HN = TFIM_MPO(N=N, h=1)
 Hs = np.array([Hs for i in range(N-2)])
 
 ## Bond dimensions (len=N-1)
-D = [2, 3, 5, 3, 2]
-x = DMRG(D=D, d=2, H0=H0, Hs=Hs, HN=HN, lcz_k=10)
+D = [2, 3, 5, 6, 8, 6, 5, 3, 2]
+x = DMRG(D=D, d=2, H0=H0, Hs=Hs, HN=HN, lcz_k=3)
+print('\nInitializing sweeps...\n')
+energies = x.sweep()
 
+print(energies)
 
 
