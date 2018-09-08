@@ -32,7 +32,7 @@ for i in range(N-1):
     Ham += kron_list(identities[:i] + interaction + identities[i:])
     
 ## Add PBC term
-Ham += kron_list([pauli_Z] + identities + [pauli_Z])
+#Ham += kron_list([pauli_Z] + identities + [pauli_Z])
 
 ## Add field interactions
 identities.append(np.eye(2))
