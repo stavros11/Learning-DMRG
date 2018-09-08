@@ -84,9 +84,11 @@ class DMRG(object):
         self.update_L_boundary()
         
         ## Sweep to right
-        for i in range(1, self.ops.N - 1):
-            energy_list.append(self.apply_lanczosM(i))
-            self.update_R(i-1)
+        energy_list.append(self.apply_lanczosM_to_right(1))
+        self.update_L(1)
+        for i in range(2, self.ops.N - 2):
+            energy_list.append(self.apply_lanczosM_to_right(i))
+            self.update_R(i-2)
             self.update_L(i)
         
         ## Update right boundary
@@ -94,10 +96,12 @@ class DMRG(object):
         self.update_R_boundary()
         
         ## Sweep to left
-        for i in range(self.ops.N - 2, 0, -1):
+        energy_list.append(self.apply_lanczosM_to_left(self.ops.N - 3))
+        self.update_R(self.ops.N - 4)
+        for i in range(self.ops.N - 4, 0, -1):
             energy_list.append(self.apply_lanczosM(i))
             self.update_R(i-1)
-            self.update_L(i)
+            self.update_L(i+1)
         
         return energy_list
     
@@ -142,11 +146,9 @@ class DMRG(object):
         
         return self.energy
         
-    def apply_lanczosM(self, i):
-        ## Here i is the index of the state to be updated: Hence 1 <= i <= N-2
-        ## For i=0 use lanczos0, for i=N-1 use lanczosN
+    def apply_lanczos_for_B(self, i):
         V_lz, alpha, beta = self.sess.run(self.ops.lanczosM[i-1], feed_dict={self.ops.plc.L[i-1] : self.L[i-1],
-                                          self.ops.plc.R[i+1] : self.R[i+1],
+                                          self.ops.plc.R[i] : self.R[i],
                                           self.ops.plc.state[i] : self.state[i],
                                           self.ops.plc.state[i+1] : self.state[i+1]})
         
@@ -155,34 +157,46 @@ class DMRG(object):
         ## Transform the ground state eigenvector to B
         B = np.eisum('a,abcde->bcde', eig_vec[0], V_lz)
         
+        return B, eig_vals[0]
+        
+    def apply_lanczosM_to_right(self, i):
+        ## Here i is the index of the state to be updated: Hence 1 <= i <= N-3
+        ## For i=0 use lanczos0, for i=N-1 use lanczosN
+        B, self.energy = self.apply_lanczos_for_B(i)
         U, S, V = svd(B.reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
         ## Assume Di < d D_{i-1} and truncate
         U, S, V = U[:, :self.D[i]], S[:self.D[i]], V[:self.D[i]]
         
         ## Updates
-        self.energy = eig_vals[0]
         self.state[i] = U.reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
         self.state[i+1] = (np.diag(S).dot(V)).reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
         
         return self.energy
+    
+    def apply_lanczosM_to_left(self, i):
+        ## Here i+1 is the index of the state to be updated. 1 <= i <= N-3
+        B, self.energy = self.apply_lanczos_for_B(i)
+        U, S, V = svd(B.reshape(self.D[i-1]*self.d, self.D[i+1]*self.d))
+        ## Assume Di < d D_{i-1} and truncate
+        U, S, V = U[:,:self.D[i]], S[:self.D[i]], V[:self.D[i]]
+        
+        ## Updates
+        self.state[i+1] = V.reshape(self.D[i], self.d, self.D[i+1]).transpose(axes=(0, 2, 1))
+        self.state[i] = (U.dot(np.diag(S))).reshape(self.D[i-1], self.d, self.D[i]).transpose(axes=(0, 2, 1))
+        
+        return self.energy
         
     def update_L(self, i):
-        ## Here i is the index of L to be updated: 1 <= i <= N-2
+        ## Here i is the index of L to be updated: 1 <= i <= N-3
         ## For i=0 use boundary function
         self.L[i] = self.sess.run(self.ops.L[i], feed_dict={self.ops.plc.L[i-1] : self.L[i-1], 
-              self.ops.plc.state[i+1] : self.state[i+1]})
+              self.ops.plc.state[i] : self.state[i]})
     
     def update_R(self, i):
-        ## Here i is the index of L to be updated: 0 <= i <= N-3
-        ## For i=N-2 use boundary function
-        
-        print(self.R[i+1].shape)
-        print(self.ops.plc.R[i+1])
-        
-        print(self.state[i].shape)
-        print(self.ops.plc.state[i])
+        ## Here i is the index of L to be updated: 0 <= i <= N-4
+        ## For i=N-3 use boundary function
         self.R[i] = self.sess.run(self.ops.R[i], feed_dict={self.ops.plc.R[i+1] : self.R[i+1],
-              self.ops.plc.state[i] : self.state[i]})
+              self.ops.plc.state[i+2] : self.state[i+2]})
     
     def update_R_boundary(self):
         self.R[-1] = self.sess.run(self.ops.R[-1], feed_dict={self.ops.plc.state[0] : self.state[-1]})
