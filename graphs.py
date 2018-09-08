@@ -57,9 +57,9 @@ class Operations(object):
         return tf.einsum('bci,ai->abc', x, tf.conj(s))
     
     def R_graph(self, i):
-        x = tf.einsum('abc,fcj->abfj', self.plc.R[self.N - 3 - i], self.plc.state[self.N - 2 - i])
-        x = tf.einsum('ebij,abfj->aefi', self.H.mid[i], x)
-        return tf.einsum('dai,aefi->def', tf.conj(self.plc.state[self.N - 2 - i]), x)
+        x = tf.einsum('abc,fcj->abfj', self.plc.R[i+1], self.plc.state[i+2])
+        x = tf.einsum('ebij,abfj->aefi', self.H.mid[i+1], x)
+        return tf.einsum('dai,aefi->def', tf.conj(self.plc.state[i+2]), x)
     
     def L_graph(self, i):
         x = tf.einsum('def,fcj->decj', self.plc.L[i], self.plc.state[i+1])
@@ -80,12 +80,13 @@ class Placeholders(object):
         self.state = [tf.placeholder(dtype=tf.complex64, shape=(d, d))]
         self.R = []
         self.L = [tf.placeholder(dtype=tf.complex64, shape=(D[0], DH, D[0]))]
-        for i in range(1, len(D)):
+        for i in range(1, len(D)-1):
             self.state.append(tf.placeholder(dtype=tf.complex64, shape=(D[i-1], D[i], d)))
             self.R.append(tf.placeholder(dtype=tf.complex64, shape=(D[i], DH, D[i])))
             self.L.append(tf.placeholder(dtype=tf.complex64, shape=(D[i], DH, D[i])))
         
-        self.L = self.L[:-1]
+        self.state.append(tf.placeholder(dtype=tf.complex64, shape=(D[-2], D[-1], d)))
+        self.R.append(tf.placeholder(dtype=tf.complex64, shape=(D[-1], DH, D[-1])))
         
 class Hamiltonian(object):
     def __init__(self, H0, Hs, HN):
