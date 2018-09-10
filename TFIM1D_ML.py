@@ -41,11 +41,16 @@ class Trainer(object):
         self.classical = tf.constant(classical_energy(self.states, pbc=self.pbc), dtype=tf.float32)
         self.to_decimal = 2**np.arange(self.N-1, -1, -1)
         
+    def compiler(self, folder=None):
         ## Create wavefunction and placeholders
         self.plc = tf.placeholder(shape=self.states.shape+(1,), dtype=tf.float32)
-        #self.psi = tf.Variable(np.load('TFIM1D_N10H1_GS.npy'), dtype=tf.float32)
         #self.psi = tf.Variable(np.random.normal(loc=0.0, scale=0.1, size=(2**N,)), dtype=tf.float32)
-        self.psi = self.machine()[:,0,0]
+        
+        self.machine()
+        if folder != None:
+            self.load_model(folder)
+        
+        self.psi = self.model.layers[-1].output[:,0,0]
     
         ## Create energy and training ops
         self.energy_graph()
@@ -57,7 +62,6 @@ class Trainer(object):
         self.model.add(Conv1D(64, 5, activation='relu'))
         self.model.add(Conv1D(32, 4, activation='relu'))
         self.model.add(Conv1D(1, 3, activation='sigmoid'))
-        return self.model.layers[-1].output
                 
     def energy_graph(self):
         psi2 = tf.multiply(self.psi, self.psi)
@@ -83,7 +87,7 @@ class Trainer(object):
         optimizer = tf.train.AdamOptimizer()
         self.train_op = optimizer.minimize(self.energy_op)
     
-    def train_early_stop(self, delta=1e-8, patience=20, en_calc=100, message=2000):
+    def train_early_stop(self, folder, delta=1e-8, patience=20, en_calc=100, message=2000):
         fd = {self.plc : self.states[:,:,np.newaxis]}
         epoch, counter = 0, 0
         
@@ -110,38 +114,27 @@ class Trainer(object):
                     break
                 
                 epoch += 1
+                
+            self.save_weights(sess, folder)
         
         return energies, psis
     
-    def save_weights(self, folder):
+    def save_weights(self, sess, folder):
         for (i, l) in enumerate(self.model.layers):
-            np.save(path.join(folder, 'WeightsLayer%d.npy'%i), K.eval(l.weights[0]))
-            np.save(path.join(folder, 'BiasesLayer%d.npy'%i), K.eval(l.weights[1]))
+            np.save(path.join(folder, 'WeightsLayer%d.npy'%i), sess.run(l.weights[0]))
+            np.save(path.join(folder, 'BiasesLayer%d.npy'%i), sess.run(l.weights[1]))
             
     def load_model(self, folder):
-        for (i,l) in self.model.layers:
-            l.set_weights([np.load(path.join(folder, 'WeightsLayer%d.npy'%i)),
-                           np.load(path.join(folder, 'BiasesLayer%d.npy'%i))])
+        for i in range(len(self.model.layers)):
+            self.model.layers[i].set_weights([np.load(path.join(folder, 'WeightsLayer%d.npy'%i)),
+                                              np.load(path.join(folder, 'BiasesLayer%d.npy'%i))])
+        print('\nWeights loaded.\n')
     
 ### Debugging ###
 tr = Trainer(N=10, h=1.0)
+tr.compiler()
 
-#en_pred, psis = tr.train_early_stop(patience=3, en_calc=1, message=100)
-#tr.save_weights('CNN1')
+en_pred, psis = tr.train_early_stop('CNN1', patience=5, en_calc=1, message=100)
 
-tr.load_model('CNN1')
+#tr.compiler('CNN2')
 
-#### Calculate normal quantities ###
-#from TFIM1D_ED import Ham
-#cl = classical_energy(tr.states) - tr.h * classical_magnetization(tr.states) / np.sqrt(2)
-#
-#t1_th, t2_th, Z_th = np.zeros(len(psis)), np.zeros(len(psis)), np.zeros(len(psis))
-#en_th, en_thc = np.zeros(len(psis)), np.zeros(len(psis))
-#for (i, x) in enumerate(psis):
-#    Z_th[i] = np.sum(x * x)
-#    en_th[i] = np.sum((x * Ham.dot(x)) / Z_th[i])
-#    t1_th[i] = np.sum(x*x*cl)
-#    for j in range(tr.N):
-#        t2_th[i] += np.sum(x[tr.selection[j]] * x[tr.selection[j] + 2**(9-j)])
-#    
-#    en_thc[i] = (t1_th[i] - np.sqrt(2.0) * tr.h * t2_th[i]) / Z_th[i]
