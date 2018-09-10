@@ -8,7 +8,11 @@ Created on Mon Sep 10 10:03:20 2018
 import numpy as np
 import tensorflow as tf
 from itertools import product
-from keras.layers import Conv1D, Input
+from os import path
+
+from keras.models import Sequential
+from keras.layers import Conv1D, InputLayer
+import keras.backend as K
 
 #################################################
 ## Brute force approach by creating all states ##
@@ -48,10 +52,12 @@ class Trainer(object):
         self.training_graph()
         
     def machine(self):
-        x = Input(tensor=self.plc)
-        x = Conv1D(64, 5, activation='relu')(x)
-        x = Conv1D(32, 4, activation='relu')(x)
-        return Conv1D(1, 3, activation='sigmoid')(x)
+        self.model = Sequential()
+        self.model.add(InputLayer(input_tensor=self.plc))
+        self.model.add(Conv1D(64, 5, activation='relu'))
+        self.model.add(Conv1D(32, 4, activation='relu'))
+        self.model.add(Conv1D(1, 3, activation='sigmoid'))
+        return self.model.layers[-1].output
                 
     def energy_graph(self):
         psi2 = tf.multiply(self.psi, self.psi)
@@ -74,7 +80,7 @@ class Trainer(object):
     
     def training_graph(self):
         #optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+        optimizer = tf.train.AdamOptimizer()
         self.train_op = optimizer.minimize(self.energy_op)
     
     def train_early_stop(self, delta=1e-8, patience=20, en_calc=100, message=2000):
@@ -107,10 +113,23 @@ class Trainer(object):
         
         return energies, psis
     
+    def save_weights(self, folder):
+        for (i, l) in enumerate(self.model.layers):
+            np.save(path.join(folder, 'WeightsLayer%d.npy'%i), K.eval(l.weights[0]))
+            np.save(path.join(folder, 'BiasesLayer%d.npy'%i), K.eval(l.weights[1]))
+            
+    def load_model(self, folder):
+        for (i,l) in self.model.layers:
+            l.set_weights([np.load(path.join(folder, 'WeightsLayer%d.npy'%i)),
+                           np.load(path.join(folder, 'BiasesLayer%d.npy'%i))])
+    
 ### Debugging ###
 tr = Trainer(N=10, h=1.0)
 
-en_pred, psis = tr.train_early_stop(patience=10, en_calc=1, message=50)
+#en_pred, psis = tr.train_early_stop(patience=3, en_calc=1, message=100)
+#tr.save_weights('CNN1')
+
+tr.load_model('CNN1')
 
 #### Calculate normal quantities ###
 #from TFIM1D_ED import Ham
