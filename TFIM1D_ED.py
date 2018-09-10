@@ -21,8 +21,8 @@ N = 10
 h = 1
 
 ### Create Hamiltonian Matrix ###
-Ham = np.empty([2**N, 2**N])
-HB = np.empty([2**N, 2**N])
+Ham = np.zeros([2**N, 2**N])
+HB = np.zeros([2**N, 2**N])
 
 ## Add interactions to Hamiltonian
 interaction = [np.kron(pauli_Z, pauli_Z)]
