@@ -13,9 +13,6 @@ from itertools import product
 ## Brute force approach by creating all states ##
 #################################################
 
-def classical_magnetization(states):
-    return np.sum(1 - 2 * states, axis=1)
-
 def classical_energy(states, pbc=False):
     x = 1 - 2 * states
     energy = np.sum(x[:, 1:] * x[:, :-1], axis=1)
