@@ -8,6 +8,7 @@ Created on Mon Sep 10 10:03:20 2018
 import numpy as np
 import tensorflow as tf
 from itertools import product
+from keras.layers import Conv1D, Input
 
 #################################################
 ## Brute force approach by creating all states ##
@@ -36,13 +37,21 @@ class Trainer(object):
         self.classical = tf.constant(classical_energy(self.states, pbc=self.pbc), dtype=tf.float32)
         self.to_decimal = 2**np.arange(self.N-1, -1, -1)
         
-        ## Create wavefunction
+        ## Create wavefunction and placeholders
+        self.plc = tf.placeholder(shape=self.states.shape+(1,), dtype=tf.float32)
         #self.psi = tf.Variable(np.load('TFIM1D_N10H1_GS.npy'), dtype=tf.float32)
-        self.psi = tf.Variable(np.random.normal(loc=0.0, scale=0.1, size=(2**N,)), dtype=tf.float32)
+        #self.psi = tf.Variable(np.random.normal(loc=0.0, scale=0.1, size=(2**N,)), dtype=tf.float32)
+        self.psi = self.machine()[:,0,0]
     
         ## Create energy and training ops
         self.energy_graph()
         self.training_graph()
+        
+    def machine(self):
+        x = Input(tensor=self.plc)
+        x = Conv1D(64, 5, activation='relu')(x)
+        x = Conv1D(32, 4, activation='relu')(x)
+        return Conv1D(1, 3, activation='sigmoid')(x)
                 
     def energy_graph(self):
         psi2 = tf.multiply(self.psi, self.psi)
@@ -64,22 +73,24 @@ class Trainer(object):
                                          tf.gather(self.psi, ind)))
     
     def training_graph(self):
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
         self.train_op = optimizer.minimize(self.energy_op)
     
     def train_early_stop(self, delta=1e-8, patience=20, en_calc=100, message=2000):
-        #fd = {self.machine.states : self.states}
+        fd = {self.plc : self.states[:,:,np.newaxis]}
         epoch, counter = 0, 0
+        
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            energies, psis = [sess.run(self.energy_op)], [sess.run(self.psi)]
+            energies, psis = [sess.run(self.energy_op, feed_dict=fd)], [sess.run(self.psi, feed_dict=fd)]
             
             while True:
-                sess.run(self.train_op)
+                sess.run(self.train_op, feed_dict=fd)
                 
                 if epoch % en_calc == 0:
-                    psis.append(sess.run(self.psi))
-                    energies.append(sess.run(self.energy_op))
+                    psis.append(sess.run(self.psi, feed_dict=fd))
+                    energies.append(sess.run(self.energy_op, feed_dict=fd))
                     
                     if epoch % message == 0:
                         print('Epoch: %d  -  Energy: %.10f\n'%(epoch, energies[-1]))
