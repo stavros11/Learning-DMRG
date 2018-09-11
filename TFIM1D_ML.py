@@ -11,7 +11,7 @@ from itertools import product
 from os import path
 
 from keras.models import Sequential
-from keras.layers import Conv1D, InputLayer
+from keras.layers import Conv1D, InputLayer, Lambda
 import keras.backend as K
 
 #################################################
@@ -50,7 +50,7 @@ class Trainer(object):
         if folder != None:
             self.load_model(folder)
         
-        self.psi = self.model.layers[-1].output[:,0,0]
+        self.psi = self.model.layers[-1].output
     
         ## Create energy and training ops
         self.energy_graph()
@@ -59,9 +59,13 @@ class Trainer(object):
     def machine(self):
         self.model = Sequential()
         self.model.add(InputLayer(input_tensor=self.plc))
-        self.model.add(Conv1D(64, 5, activation='relu'))
         self.model.add(Conv1D(32, 4, activation='relu'))
-        self.model.add(Conv1D(1, 3, activation='sigmoid'))
+        self.model.add(Conv1D(16, 3, activation='relu'))
+        self.model.add(Conv1D(8, 3, activation='sigmoid'))
+        #dim = K.get_variable_shape(self.model.layers[-1].output)[1]
+        #self.model.add(AveragePooling1D(pool_size=dim))
+        #self.model.add(GlobalAveragePooling1D())
+        self.model.add(Lambda(lambda x : K.mean(x, axis=(1,2))))
                 
     def energy_graph(self):
         psi2 = tf.multiply(self.psi, self.psi)
@@ -120,21 +124,17 @@ class Trainer(object):
         return energies, psis
     
     def save_weights(self, sess, folder):
-        for (i, l) in enumerate(self.model.layers):
+        for (i, l) in enumerate(self.model.layers[:-1]):
             np.save(path.join(folder, 'WeightsLayer%d.npy'%i), sess.run(l.weights[0]))
             np.save(path.join(folder, 'BiasesLayer%d.npy'%i), sess.run(l.weights[1]))
             
-    def load_model(self, folder):
-        for i in range(len(self.model.layers)):
-            self.model.layers[i].set_weights([np.load(path.join(folder, 'WeightsLayer%d.npy'%i)),
-                                              np.load(path.join(folder, 'BiasesLayer%d.npy'%i))])
-        print('\nWeights loaded.\n')
+#    def load_model(self, folder):
+#        for i in range(len(self.model.layers)):
+#            self.model.layers[i].set_weights([np.load(path.join(folder, 'WeightsLayer%d.npy'%i)),
+#                                              np.load(path.join(folder, 'BiasesLayer%d.npy'%i))])
+#        print('\nWeights loaded.\n')
     
-### Debugging ###
-tr = Trainer(N=10, h=1.0)
+tr = Trainer(N=8, h=1.0)
 tr.compiler()
 
-en_pred, psis = tr.train_early_stop('CNN1', patience=5, en_calc=1, message=100)
-
-#tr.compiler('CNN2')
-
+en_pred, psis = tr.train_early_stop('CNN_N8_pool', patience=5, en_calc=1, message=100)
